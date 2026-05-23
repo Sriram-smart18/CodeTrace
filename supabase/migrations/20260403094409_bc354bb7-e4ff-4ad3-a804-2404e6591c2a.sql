@@ -1,0 +1,2 @@
+ALTER TABLE public.submissions DROP CONSTRAINT submissions_status_check;
+ALTER TABLE public.submissions ADD CONSTRAINT submissions_status_check CHECK (status = ANY (ARRAY['pending'::text, 'submitted'::text, 'evaluated'::text, 'flagged'::text]));
