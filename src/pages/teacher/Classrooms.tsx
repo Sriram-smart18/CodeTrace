@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
+import type { Tables } from "@/integrations/supabase/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -10,74 +11,143 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Plus, Copy, Users, BookOpen, ArrowRight, Trash2, ToggleLeft, ToggleRight } from "lucide-react";
+import { Plus, Copy, Users, BookOpen, ArrowRight, Trash2, ToggleLeft, ToggleRight, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { motion } from "framer-motion";
+
+type Classroom = Tables<"classrooms">;
 
 function generateCode(): string {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   return Array.from({ length: 6 }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
 }
 
+const isDev = import.meta.env.DEV;
+
 export default function TeacherClassrooms() {
-  const { user } = useAuth();
+  const { user, session, loading: authLoading } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
-  const [classrooms, setClassrooms] = useState<any[]>([]);
+  const [classrooms, setClassrooms] = useState<Classroom[]>([]);
   const [enrollmentCounts, setEnrollmentCounts] = useState<Record<string, number>>({});
+  const [loading, setLoading] = useState(true);
+  const [creating, setCreating] = useState(false);
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [subject, setSubject] = useState("");
   const [description, setDescription] = useState("");
   const [code, setCode] = useState(generateCode());
 
-  const load = async () => {
-    if (!user) return;
-    const { data } = await supabase
+  const fetchClassrooms = useCallback(async () => {
+    if (!user) {
+      setClassrooms([]);
+      setEnrollmentCounts({});
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    if (isDev) {
+      console.log("FETCHING CLASSROOMS");
+      console.log("AUTH USER ID", user.id);
+      console.log("SESSION PRESENT", Boolean(session));
+    }
+
+    const { data, error } = await supabase
       .from("classrooms")
       .select("*")
       .eq("teacher_id", user.id)
       .order("created_at", { ascending: false });
-    if (data) {
-      setClassrooms(data);
-      // Load enrollment counts
-      const counts: Record<string, number> = {};
-      await Promise.all(
-        data.map(async (c) => {
-          const { count } = await supabase
-            .from("classroom_students")
-            .select("*", { count: "exact", head: true })
-            .eq("classroom_id", c.id);
-          counts[c.id] = count ?? 0;
-        })
-      );
-      setEnrollmentCounts(counts);
-    }
-  };
 
-  useEffect(() => { load(); }, [user]);
+    if (isDev) {
+      console.log("FETCH DATA", data);
+      console.log("FETCH ERROR", error);
+    }
+
+    setClassrooms(data ?? []);
+    if (isDev) console.log("STATE UPDATED", data ?? []);
+
+    if (error) {
+      toast({ title: "Error loading classrooms", description: error.message, variant: "destructive" });
+      setLoading(false);
+      return;
+    }
+
+    if (!data?.length) {
+      setEnrollmentCounts({});
+      setLoading(false);
+      return;
+    }
+
+    const counts: Record<string, number> = {};
+    await Promise.all(
+      data.map(async (c) => {
+        const { count, error: countErr } = await supabase
+          .from("classroom_students")
+          .select("*", { count: "exact", head: true })
+          .eq("classroom_id", c.id);
+        if (countErr && isDev) console.warn("enrollment count error", c.id, countErr);
+        counts[c.id] = count ?? 0;
+      })
+    );
+    setEnrollmentCounts(counts);
+    setLoading(false);
+  }, [user, session, toast]);
+
+  useEffect(() => {
+    if (authLoading) return;
+    fetchClassrooms();
+  }, [authLoading, fetchClassrooms]);
 
   const handleCreate = async () => {
     if (!user || !name.trim() || !subject.trim()) return;
-    const { error } = await supabase.from("classrooms").insert({
-      teacher_id: user.id,
-      classroom_name: name.trim(),
-      subject_name: subject.trim(),
-      classroom_code: code,
-      description: description.trim() || null,
-    });
+
+    setCreating(true);
+    if (isDev) {
+      console.log("CURRENT USER", user);
+      console.log("AUTH USER ID", user.id);
+    }
+
+    const { data, error } = await supabase
+      .from("classrooms")
+      .insert({
+        teacher_id: user.id,
+        classroom_name: name.trim(),
+        subject_name: subject.trim(),
+        description: description.trim() || null,
+        classroom_code: code,
+      })
+      .select()
+      .single();
+
+    if (isDev) {
+      console.log("INSERT RESPONSE", data);
+      console.log("INSERT ERROR", error);
+    }
+
+    setCreating(false);
+
     if (error) {
       toast({ title: "Error", description: error.message, variant: "destructive" });
-    } else {
-      toast({ title: "Classroom created", description: `Code: ${code}` });
-      setName(""); setSubject(""); setDescription(""); setCode(generateCode()); setOpen(false);
-      load();
+      return;
     }
+
+    toast({ title: "Classroom created", description: `Code: ${code}` });
+    setName("");
+    setSubject("");
+    setDescription("");
+    setCode(generateCode());
+    setOpen(false);
+    await fetchClassrooms();
   };
 
   const toggleActive = async (id: string, current: boolean) => {
-    await supabase.from("classrooms").update({ is_active: !current }).eq("id", id);
-    load();
+    const { error } = await supabase.from("classrooms").update({ is_active: !current }).eq("id", id);
+    if (error) {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+      return;
+    }
+    await fetchClassrooms();
   };
 
   const deleteClassroom = async (id: string) => {
@@ -86,13 +156,13 @@ export default function TeacherClassrooms() {
       toast({ title: "Error", description: error.message, variant: "destructive" });
     } else {
       toast({ title: "Classroom deleted" });
-      load();
+      await fetchClassrooms();
     }
   };
 
-  const copyCode = (code: string) => {
-    navigator.clipboard.writeText(code);
-    toast({ title: "Code copied!", description: code });
+  const copyCode = (classroomCode: string) => {
+    navigator.clipboard.writeText(classroomCode);
+    toast({ title: "Code copied!", description: classroomCode });
   };
 
   const SUBJECT_COLORS: Record<string, string> = {
@@ -103,8 +173,8 @@ export default function TeacherClassrooms() {
     default: "bg-primary/20 text-primary border-primary/30",
   };
 
-  const getSubjectColor = (subject: string) => {
-    const key = subject.toLowerCase();
+  const getSubjectColor = (subjectName: string) => {
+    const key = subjectName.toLowerCase();
     return SUBJECT_COLORS[key] || SUBJECT_COLORS.default;
   };
 
@@ -145,15 +215,33 @@ export default function TeacherClassrooms() {
                   </div>
                   <p className="text-xs text-muted-foreground">Share this code with students to join</p>
                 </div>
-                <Button onClick={handleCreate} className="w-full" disabled={!name.trim() || !subject.trim()}>
-                  Create Classroom
+                <Button
+                  onClick={handleCreate}
+                  className="w-full"
+                  disabled={!name.trim() || !subject.trim() || creating}
+                >
+                  {creating ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Creating...
+                    </>
+                  ) : (
+                    "Create Classroom"
+                  )}
                 </Button>
               </div>
             </DialogContent>
           </Dialog>
         </div>
 
-        {classrooms.length === 0 ? (
+        {loading ? (
+          <Card>
+            <CardContent className="py-16 flex flex-col items-center justify-center gap-3">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+              <p className="text-sm text-muted-foreground">Loading classrooms...</p>
+            </CardContent>
+          </Card>
+        ) : classrooms.length === 0 ? (
           <Card>
             <CardContent className="py-16 text-center">
               <BookOpen className="h-12 w-12 text-muted-foreground mx-auto mb-4 opacity-30" />
@@ -189,7 +277,6 @@ export default function TeacherClassrooms() {
                       <p className="text-xs text-muted-foreground line-clamp-2">{c.description}</p>
                     )}
 
-                    {/* Classroom code */}
                     <div className="flex items-center gap-2 p-2 rounded-lg bg-black/30 border border-white/10">
                       <span className="font-mono text-lg font-bold tracking-widest text-primary flex-1 text-center">
                         {c.classroom_code}
@@ -199,7 +286,6 @@ export default function TeacherClassrooms() {
                       </Button>
                     </div>
 
-                    {/* Stats */}
                     <div className="flex items-center gap-4 text-xs text-muted-foreground">
                       <span className="flex items-center gap-1">
                         <Users className="h-3 w-3" />
@@ -209,7 +295,6 @@ export default function TeacherClassrooms() {
                       <span>{new Date(c.created_at).toLocaleDateString()}</span>
                     </div>
 
-                    {/* Actions */}
                     <div className="flex items-center gap-2 pt-2 border-t border-white/5 mt-auto">
                       <Button
                         size="sm"

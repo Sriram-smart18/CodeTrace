@@ -1,4 +1,9 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import type { Tables } from "@/integrations/supabase/types";
+
+type Classroom = Tables<"classrooms">;
+type Enrollment = Pick<Tables<"classroom_students">, "classroom_id" | "joined_at">;
+type EnrolledClassroom = Classroom & { joined_at?: string };
 import { useNavigate } from "react-router-dom";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { useAuth } from "@/contexts/AuthContext";
@@ -17,39 +22,55 @@ export default function StudentClassrooms() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
-  const [classrooms, setClassrooms] = useState<any[]>([]);
+  const [classrooms, setClassrooms] = useState<EnrolledClassroom[]>([]);
   const [open, setOpen] = useState(false);
   const [code, setCode] = useState("");
   const [joining, setJoining] = useState(false);
 
-  const load = async () => {
-    if (!user) return;
-    // Get classrooms the student is enrolled in
-    const { data: enrollments } = await supabase
+  const load = useCallback(async () => {
+    if (!user) {
+      setClassrooms([]);
+      return;
+    }
+
+    const { data: enrollments, error: enrollErr } = await supabase
       .from("classroom_students")
       .select("classroom_id, joined_at")
       .eq("student_id", user.id);
 
-    if (enrollments && enrollments.length > 0) {
-      const ids = enrollments.map((e: any) => e.classroom_id);
-      const { data: rooms } = await supabase
-        .from("classrooms")
-        .select("*")
-        .in("id", ids)
-        .order("created_at", { ascending: false });
-      if (rooms) {
-        const enriched = rooms.map((r: any) => ({
-          ...r,
-          joined_at: enrollments.find((e: any) => e.classroom_id === r.id)?.joined_at,
-        }));
-        setClassrooms(enriched);
-      }
-    } else {
+    if (enrollErr) {
+      toast({ title: "Error", description: enrollErr.message, variant: "destructive" });
       setClassrooms([]);
+      return;
     }
-  };
 
-  useEffect(() => { load(); }, [user]);
+    const rows = (enrollments ?? []) as Enrollment[];
+    if (rows.length === 0) {
+      setClassrooms([]);
+      return;
+    }
+
+    const ids = rows.map((e) => e.classroom_id);
+    const { data: rooms, error: roomsErr } = await supabase
+      .from("classrooms")
+      .select("*")
+      .in("id", ids)
+      .order("created_at", { ascending: false });
+
+    if (roomsErr) {
+      toast({ title: "Error", description: roomsErr.message, variant: "destructive" });
+      setClassrooms([]);
+      return;
+    }
+
+    const enriched: EnrolledClassroom[] = (rooms ?? []).map((r) => ({
+      ...r,
+      joined_at: rows.find((e) => e.classroom_id === r.id)?.joined_at,
+    }));
+    setClassrooms(enriched);
+  }, [user, toast]);
+
+  useEffect(() => { load(); }, [load]);
 
   const handleJoin = async () => {
     if (!user || !code.trim()) return;

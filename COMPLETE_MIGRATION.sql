@@ -1,7 +1,7 @@
 -- ================================================================
 -- TRACECODE V3 — COMPLETE SAFE MIGRATION
 -- ================================================================
--- Project : uvuximrxlogvtgirtlsc (TraceCode)
+-- Project : fnvkthngkbrodsmjbuft (TraceCode)
 -- Date    : 2026-05-20
 -- Author  : Generated from verified DB audit
 --
@@ -21,7 +21,7 @@
 --   ✓ Idempotent — safe to run multiple times
 --
 -- HOW TO APPLY:
---   1. Go to https://supabase.com/dashboard/project/uvuximrxlogvtgirtlsc/sql/new
+--   1. Go to https://supabase.com/dashboard/project/fnvkthngkbrodsmjbuft/sql/new
 --   2. Paste this ENTIRE file
 --   3. Click RUN (Ctrl+Enter)
 --   4. Scroll to bottom — verify all rows show "OK"
@@ -151,59 +151,75 @@ ALTER TABLE public.classroom_students ENABLE ROW LEVEL SECURITY;
 
 
 -- ================================================================
--- PHASE 7 — RLS policies: classrooms
+-- PHASE 6b — RLS helper functions (prevents infinite recursion)
 -- ================================================================
 
-DROP POLICY IF EXISTS "Teachers can view own classrooms"             ON public.classrooms;
-DROP POLICY IF EXISTS "Teachers can create classrooms"               ON public.classrooms;
-DROP POLICY IF EXISTS "Teachers can update own classrooms"           ON public.classrooms;
-DROP POLICY IF EXISTS "Teachers can delete own classrooms"           ON public.classrooms;
-DROP POLICY IF EXISTS "Students can view enrolled classrooms"        ON public.classrooms;
+CREATE OR REPLACE FUNCTION public.user_owns_classroom(_classroom_id uuid)
+RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public
+AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM public.classrooms c
+    WHERE c.id = _classroom_id AND c.teacher_id = auth.uid()
+  );
+$$;
+
+CREATE OR REPLACE FUNCTION public.user_enrolled_in_classroom(_classroom_id uuid)
+RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public
+AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM public.classroom_students cs
+    WHERE cs.classroom_id = _classroom_id AND cs.student_id = auth.uid()
+  );
+$$;
+
+GRANT EXECUTE ON FUNCTION public.user_owns_classroom(uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.user_enrolled_in_classroom(uuid) TO authenticated;
+
+
+-- ================================================================
+-- PHASE 7 — RLS policies: classrooms (non-recursive)
+-- ================================================================
+
+DROP POLICY IF EXISTS "Teachers can view their classrooms"            ON public.classrooms;
+DROP POLICY IF EXISTS "Teachers can view own classrooms"              ON public.classrooms;
+DROP POLICY IF EXISTS "Teachers can create classrooms"                ON public.classrooms;
+DROP POLICY IF EXISTS "Teachers can update own classrooms"            ON public.classrooms;
+DROP POLICY IF EXISTS "Teachers can update their classrooms"          ON public.classrooms;
+DROP POLICY IF EXISTS "Teachers can delete own classrooms"            ON public.classrooms;
+DROP POLICY IF EXISTS "Teachers can delete their classrooms"          ON public.classrooms;
+DROP POLICY IF EXISTS "Students can view enrolled classrooms"         ON public.classrooms;
 DROP POLICY IF EXISTS "Anyone can view classroom by code for joining" ON public.classrooms;
 
--- Teachers and admins see their own classrooms
-CREATE POLICY "Teachers can view own classrooms"
+CREATE POLICY "Teachers can view their classrooms"
   ON public.classrooms FOR SELECT TO authenticated
-  USING (
-    teacher_id = auth.uid()
-    OR public.has_role(auth.uid(), 'admin')
-  );
+  USING (teacher_id = auth.uid());
 
--- Teachers create classrooms (teacher_id must equal caller)
 CREATE POLICY "Teachers can create classrooms"
   ON public.classrooms FOR INSERT TO authenticated
   WITH CHECK (teacher_id = auth.uid());
 
--- Teachers update their own classrooms only
-CREATE POLICY "Teachers can update own classrooms"
+CREATE POLICY "Teachers can update their classrooms"
   ON public.classrooms FOR UPDATE TO authenticated
-  USING (teacher_id = auth.uid());
+  USING (teacher_id = auth.uid())
+  WITH CHECK (teacher_id = auth.uid());
 
--- Teachers delete their own classrooms only
-CREATE POLICY "Teachers can delete own classrooms"
+CREATE POLICY "Teachers can delete their classrooms"
   ON public.classrooms FOR DELETE TO authenticated
   USING (teacher_id = auth.uid());
 
--- Students see classrooms they are enrolled in
 CREATE POLICY "Students can view enrolled classrooms"
   ON public.classrooms FOR SELECT TO authenticated
-  USING (
-    EXISTS (
-      SELECT 1 FROM public.classroom_students cs
-      WHERE cs.classroom_id = classrooms.id
-        AND cs.student_id   = auth.uid()
-    )
-  );
+  USING (public.user_enrolled_in_classroom(id));
 
--- Any authenticated user can look up a classroom by code
--- (required for the join-by-code flow — lookup before enrollment)
 CREATE POLICY "Anyone can view classroom by code for joining"
   ON public.classrooms FOR SELECT TO authenticated
   USING (true);
 
 
 -- ================================================================
--- PHASE 8 — RLS policies: classroom_students
+-- PHASE 8 — RLS policies: classroom_students (non-recursive)
 -- ================================================================
 
 DROP POLICY IF EXISTS "Students can view own enrollments"       ON public.classroom_students;
@@ -211,41 +227,21 @@ DROP POLICY IF EXISTS "Students can enroll themselves"          ON public.classr
 DROP POLICY IF EXISTS "Teachers can view classroom enrollments" ON public.classroom_students;
 DROP POLICY IF EXISTS "Teachers can remove students"            ON public.classroom_students;
 
--- Students see their own enrollments; teachers see all for their classrooms
 CREATE POLICY "Students can view own enrollments"
   ON public.classroom_students FOR SELECT TO authenticated
-  USING (
-    student_id = auth.uid()
-    OR public.has_role(auth.uid(), 'teacher')
-    OR public.has_role(auth.uid(), 'admin')
-  );
+  USING (student_id = auth.uid());
 
--- Students can only enroll themselves
+CREATE POLICY "Teachers can view classroom enrollments"
+  ON public.classroom_students FOR SELECT TO authenticated
+  USING (public.user_owns_classroom(classroom_id));
+
 CREATE POLICY "Students can enroll themselves"
   ON public.classroom_students FOR INSERT TO authenticated
   WITH CHECK (student_id = auth.uid());
 
--- Teachers see enrollments for classrooms they own
-CREATE POLICY "Teachers can view classroom enrollments"
-  ON public.classroom_students FOR SELECT TO authenticated
-  USING (
-    EXISTS (
-      SELECT 1 FROM public.classrooms c
-      WHERE c.id         = classroom_students.classroom_id
-        AND c.teacher_id = auth.uid()
-    )
-  );
-
--- Teachers remove students from their own classrooms only
 CREATE POLICY "Teachers can remove students"
   ON public.classroom_students FOR DELETE TO authenticated
-  USING (
-    EXISTS (
-      SELECT 1 FROM public.classrooms c
-      WHERE c.id         = classroom_students.classroom_id
-        AND c.teacher_id = auth.uid()
-    )
-  );
+  USING (public.user_owns_classroom(classroom_id));
 
 
 -- ================================================================
@@ -268,38 +264,19 @@ DROP POLICY IF EXISTS "Teachers can delete own assignments"     ON public.assign
 CREATE POLICY "Students can view classroom assignments"
   ON public.assignments FOR SELECT TO authenticated
   USING (
-    -- Legacy: no classroom attached — visible to all authenticated
     classroom_id IS NULL
-    OR
-    -- Student is enrolled in the assignment's classroom
-    EXISTS (
-      SELECT 1 FROM public.classroom_students cs
-      WHERE cs.classroom_id = assignments.classroom_id
-        AND cs.student_id   = auth.uid()
-    )
-    OR
-    -- Teacher sees their own assignments regardless of classroom
-    created_by = auth.uid()
-    OR
-    -- Admin sees everything
-    public.has_role(auth.uid(), 'admin')
+    OR created_by = auth.uid()
+    OR public.user_enrolled_in_classroom(classroom_id)
+    OR public.has_role(auth.uid(), 'admin')
   );
 
--- Teachers create assignments only for their own classrooms
 CREATE POLICY "Teachers can create assignments"
   ON public.assignments FOR INSERT TO authenticated
   WITH CHECK (
     created_by = auth.uid()
     AND (
-      -- Allow legacy global assignments
       classroom_id IS NULL
-      OR
-      -- Must own the classroom
-      EXISTS (
-        SELECT 1 FROM public.classrooms c
-        WHERE c.id         = assignments.classroom_id
-          AND c.teacher_id = auth.uid()
-      )
+      OR public.user_owns_classroom(classroom_id)
     )
   );
 

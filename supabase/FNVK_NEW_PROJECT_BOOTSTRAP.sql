@@ -1,0 +1,13 @@
+-- ================================================================
+-- TraceCode V3 — NEW PROJECT (fnvkthngkbrodsmjbuft)
+-- ================================================================
+-- Apply in Supabase SQL Editor:
+--
+-- STEP A — Empty database:
+--   Paste and run COMPLETE_MIGRATION.sql (update project URL in header)
+--
+-- STEP B — Always run (fixes infinite RLS recursion):
+--   Paste and run: supabase/migrations/20260523150000_fix_classroom_rls_recursion.sql
+--
+-- Dashboard: https://supabase.com/dashboard/project/fnvkthngkbrodsmjbuft/sql/new
+-- ================================================================

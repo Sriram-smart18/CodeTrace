@@ -1,41 +1,26 @@
-$anon = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV2dXhpbXJ4bG9ndnRnaXJ0bHNjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ5NzA5NzcsImV4cCI6MjA5MDU0Njk3N30.kMFv3U_Yk_gCOrtU8VDYlZHb7OkznpBm_GtQZWWD18I"
-$h = @{ "apikey" = $anon; "Authorization" = "Bearer $anon" }
-$base = "https://uvuximrxlogvtgirtlsc.supabase.co/rest/v1"
-
-$checks = @(
-  "classrooms:id",
-  "classroom_students:id",
-  "assignments:classroom_id",
-  "assignments:difficulty",
-  "assignments:language",
-  "assignments:expected_skill_level",
-  "profiles:is_suspended",
-  "submissions:behavioral_log",
-  "ai_evaluations:risk_level",
-  "ai_evaluations:integrity_verdict",
-  "ai_evaluations:peer_similarity_scores",
-  "ai_evaluations:faculty_review_recommended",
-  "ai_evaluations:behavioral_log"
-)
-
-$missing = 0
-$exists  = 0
-foreach ($item in $checks) {
-  $parts = $item.Split(":")
-  $tbl = $parts[0]; $col = $parts[1]
-  try {
-    $null = Invoke-RestMethod -Uri "$base/${tbl}?select=${col}&limit=0" -Headers $h -UseBasicParsing -ErrorAction Stop
-    Write-Host "EXISTS  ${tbl}.${col}"
-    $exists++
-  } catch {
-    Write-Host "MISSING ${tbl}.${col}"
-    $missing++
+# Quick REST check against active Supabase project (reads .env)
+$envFile = Join-Path $PSScriptRoot ".env"
+if (-not (Test-Path $envFile)) { throw ".env not found" }
+Get-Content $envFile | ForEach-Object {
+  if ($_ -match '^\s*([^#][^=]+)=(.*)$') {
+    Set-Item -Path "env:$($matches[1].Trim())" -Value $matches[2].Trim()
   }
 }
-Write-Host ""
-Write-Host "EXISTS: $exists  MISSING: $missing"
-if ($missing -eq 0) {
-  Write-Host "STATUS: MIGRATION ALREADY APPLIED"
-} else {
-  Write-Host "STATUS: MIGRATION NEEDED ($missing items missing)"
+
+$base = "$($env:VITE_SUPABASE_URL)/rest/v1"
+$anon = $env:VITE_SUPABASE_ANON_KEY
+if (-not $anon) { $anon = $env:VITE_SUPABASE_PUBLISHABLE_KEY }
+$headers = @{
+  apikey        = $anon
+  Authorization = "Bearer $anon"
+}
+
+@("classrooms", "profiles", "assignments", "classroom_students") | ForEach-Object {
+  $table = $_
+  try {
+    $r = Invoke-WebRequest -Uri "$base/$table`?select=*&limit=1" -Headers $headers -UseBasicParsing
+    Write-Host "$table : $($r.StatusCode)"
+  } catch {
+    Write-Host "$table : ERROR $($_.Exception.Message)"
+  }
 }

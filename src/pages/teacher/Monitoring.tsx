@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from "react";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { supabase } from "@/integrations/supabase/client";
+import { invokeEdgeFunction } from "@/lib/invokeEdgeFunction";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Search, ScanSearch } from "lucide-react";
@@ -167,10 +168,10 @@ export default function TeacherMonitoring() {
       }
       let scanned = 0;
       for (const sid of studentIds) {
-        await supabase.functions.invoke("detect-fraud", {
-          body: { student_id: sid },
+        const { error } = await invokeEdgeFunction("detect-fraud", {
+          student_id: sid,
         });
-        scanned++;
+        if (!error) scanned++;
       }
       toast.success(`Scanned ${scanned} active student(s)`);
     } catch (err) {

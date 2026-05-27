@@ -16,7 +16,7 @@ const { Client } = require('pg');
 const fs = require('fs');
 const path = require('path');
 
-const PROJECT_REF = 'uvuximrxlogvtgirtlsc';
+const PROJECT_REF = 'fnvkthngkbrodsmjbuft';
 const DB_PASSWORD = process.argv[2];
 
 if (!DB_PASSWORD) {
@@ -186,7 +186,7 @@ async function main() {
 
   console.error('\n❌ All connection methods failed.');
   console.error('\nFallback: Use the SQL Editor method instead:');
-  console.error('  1. Go to https://supabase.com/dashboard/project/uvuximrxlogvtgirtlsc/sql');
+  console.error('  1. Go to https://supabase.com/dashboard/project/fnvkthngkbrodsmjbuft/sql');
   console.error('  2. Open: supabase/APPLY_TO_SUPABASE_SQL_EDITOR.sql');
   console.error('  3. Copy the entire file and paste it into the SQL Editor');
   console.error('  4. Click Run\n');

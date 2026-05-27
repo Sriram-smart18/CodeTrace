@@ -134,11 +134,39 @@ npm install
 Create a `.env` file in the project root (copy from `.env.example` if available):
 
 ```env
-VITE_SUPABASE_URL=https://<your-project>.supabase.co
-VITE_SUPABASE_ANON_KEY=<your-anon-key>
+VITE_SUPABASE_URL=https://fnvkthngkbrodsmjbuft.supabase.co
+VITE_SUPABASE_ANON_KEY=<your-anon-jwt-key>
+VITE_SUPABASE_PUBLISHABLE_KEY=<your-publishable-key-optional>
 ```
 
-### 3. Start the Execution Server
+### 3. Deploy Edge Functions (required for AI Evaluate)
+
+Active project: `fnvkthngkbrodsmjbuft`
+
+```bash
+supabase login
+supabase link --project-ref fnvkthngkbrodsmjbuft
+./deploy-edge-functions.ps1
+```
+
+Set the **Groq** API secret (Supabase Dashboard → Edge Functions → Secrets, or CLI):
+
+```bash
+supabase secrets set GROQ_API_KEY=gsk_your_groq_key
+```
+
+Groq uses model `llama-3.1-8b-instant` at `https://api.groq.com/openai/v1/chat/completions` with `response_format: json_object` (plain JSON, no tool calling).
+
+Functions deployed:
+
+| Function | Purpose |
+|----------|---------|
+| `evaluate-submission` | Teacher **AI Evaluate** (main pipeline) |
+| `check-plagiarism` | Peer similarity (triggered after evaluate) |
+| `detect-fraud` | Live session fraud scan |
+| `execute-code` | Code execution via Piston |
+
+### 4. Start the Execution Server
 
 The execution server handles real-time code running. Start it separately:
 
@@ -150,7 +178,7 @@ node server.js
 
 The server runs on **port 3001** by default.
 
-### 4. Start the Frontend Dev Server
+### 5. Start the Frontend Dev Server
 
 ```bash
 # From the root directory

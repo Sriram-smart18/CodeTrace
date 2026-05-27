@@ -1,5 +1,11 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  callGroqChatCompletion,
+  isGroqConfigured,
+  JSON_EVALUATOR_SYSTEM_PROMPT,
+  parseGroqJsonContent,
+} from "../_shared/ai-config.ts";
 
 declare const Deno: {
   env: {
@@ -183,8 +189,6 @@ serve(async (req: Request) => {
 
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
     // Fetch the target submission
@@ -273,11 +277,10 @@ serve(async (req: Request) => {
       })
       .eq("submission_id", submission_id);
 
-    // ── AI deep analysis (only if threshold exceeded and API key available) ───
-    if (highestScore >= SIMILARITY_THRESHOLD && LOVABLE_API_KEY) {
+    // ── Groq deep analysis when similarity threshold exceeded ───
+    if (highestScore >= SIMILARITY_THRESHOLD && isGroqConfigured()) {
       const topMatch = peerScores[0];
 
-      // Fetch the matching peer's code
       const { data: peerSub } = await supabase
         .from("submissions")
         .select("code")
@@ -285,104 +288,62 @@ serve(async (req: Request) => {
         .single();
 
       if (peerSub?.code) {
-        const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${LOVABLE_API_KEY}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            model: "google/gemini-3-flash-preview",
-            messages: [
-              {
-                role: "system",
-                content: `You are an academic plagiarism detection expert. Compare two student code submissions and determine if plagiarism has occurred. Always respond using the submit_plagiarism_verdict tool.`,
-              },
-              {
-                role: "user",
-                content: `Two student submissions for the same assignment have a computed local similarity score of ${topMatch.similarity_score}%.
+        const PLAGIARISM_FALLBACK = {
+          is_plagiarism: false,
+          confidence: 50,
+          verdict: "Automatic evaluation partially completed.",
+          evidence: [] as string[],
+        };
 
-Jaccard token similarity: ${topMatch.jaccard}%
-Edit distance ratio: ${topMatch.edit_ratio}%
-Structural histogram match: ${topMatch.histogram}%
+        console.log("[check-plagiarism] calling Groq (plain JSON)");
+        const groqResult = await callGroqChatCompletion({
+          messages: [
+            { role: "system", content: JSON_EVALUATOR_SYSTEM_PROMPT },
+            {
+              role: "user",
+              content: `Compare two submissions for plagiarism.
 
-SUBMISSION A (student under evaluation):
+Similarity ${topMatch.similarity_score}% (Jaccard ${topMatch.jaccard}%, edit ${topMatch.edit_ratio}%, histogram ${topMatch.histogram}%).
+
+SUBMISSION A:
 \`\`\`
 ${target.code.slice(0, 3000)}
 \`\`\`
 
-SUBMISSION B (peer with highest similarity):
+SUBMISSION B:
 \`\`\`
 ${peerSub.code.slice(0, 3000)}
 \`\`\`
 
-Determine:
-1. Is this plagiarism? Consider variable renaming, structural cloning, logic copying.
-2. Could this be coincidental similarity (both students solving the same simple problem)?
-3. What specific evidence supports your conclusion?
-4. How confident are you?`,
-              },
-            ],
-            tools: [
-              {
-                type: "function",
-                function: {
-                  name: "submit_plagiarism_verdict",
-                  description: "Submit the plagiarism analysis verdict",
-                  parameters: {
-                    type: "object",
-                    properties: {
-                      is_plagiarism: {
-                        type: "boolean",
-                        description: "Whether this is confirmed plagiarism",
-                      },
-                      confidence: {
-                        type: "integer",
-                        description: "Confidence in the verdict 0-100",
-                      },
-                      verdict: {
-                        type: "string",
-                        description: "Written verdict explaining the decision",
-                      },
-                      evidence: {
-                        type: "array",
-                        items: { type: "string" },
-                        description: "Specific evidence points supporting the verdict",
-                      },
-                    },
-                    required: ["is_plagiarism", "confidence", "verdict", "evidence"],
-                    additionalProperties: false,
-                  },
-                },
-              },
-            ],
-            tool_choice: { type: "function", function: { name: "submit_plagiarism_verdict" } },
-          }),
+Return JSON in exactly this shape:
+{
+  "is_plagiarism": <boolean>,
+  "confidence": <number 0-100>,
+  "verdict": "<string>",
+  "evidence": ["<string>"]
+}`,
+            },
+          ],
+          temperature: 0.2,
         });
 
-        if (aiResponse.ok) {
-          const aiData = await aiResponse.json();
-          const toolCall = aiData.choices?.[0]?.message?.tool_calls?.[0];
-          if (toolCall?.function?.arguments) {
-            const verdict = JSON.parse(toolCall.function.arguments);
+        if (groqResult.ok) {
+          const verdict = parseGroqJsonContent(
+            groqResult.data,
+            PLAGIARISM_FALLBACK,
+            "[check-plagiarism]"
+          );
+          const peerAiVerdict = `[Confidence: ${verdict.confidence}%] ${verdict.verdict}`;
+          await supabase
+            .from("ai_evaluations")
+            .update({ peer_ai_verdict: peerAiVerdict })
+            .eq("submission_id", submission_id);
 
-            // Store AI verdict
-            const peerAiVerdict = `[Confidence: ${verdict.confidence}%] ${verdict.verdict}`;
-            await supabase
-              .from("ai_evaluations")
-              .update({ peer_ai_verdict: peerAiVerdict })
-              .eq("submission_id", submission_id);
-
-            // If AI confirms plagiarism with high confidence, flag the submission
-            if (verdict.is_plagiarism && verdict.confidence >= 75) {
-              await supabase
-                .from("submissions")
-                .update({ status: "flagged" })
-                .eq("id", submission_id);
-            }
+          if (verdict.is_plagiarism && Number(verdict.confidence) >= 75) {
+            await supabase.from("submissions").update({ status: "flagged" }).eq("id", submission_id);
           }
         } else {
-          console.error("AI plagiarism check failed:", await aiResponse.text());
+          console.error("[check-plagiarism] Groq failed:", groqResult.error);
         }
       }
     }

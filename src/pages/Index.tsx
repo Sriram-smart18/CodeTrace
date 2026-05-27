@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Code, GraduationCap, Users, Shield, BookOpen, Brain, Activity } from "lucide-react";
+import { GraduationCap, Users, BookOpen, Brain, Activity } from "lucide-react";
 
 export default function Index() {
   return (
@@ -18,11 +18,6 @@ export default function Index() {
             </Button>
             <Button variant="ghost" size="sm" asChild>
               <Link to="/teacher/login">Teacher</Link>
-            </Button>
-            <Button size="sm" asChild>
-              <Link to="/admin/login">
-                <Shield className="h-4 w-4 mr-1.5" /> Admin
-              </Link>
             </Button>
           </div>
         </div>

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { supabase } from "@/integrations/supabase/client";
+import { invokeEdgeFunction } from "@/lib/invokeEdgeFunction";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -87,19 +88,16 @@ export default function TeacherAssignmentDetail() {
 
   const handleEvaluate = async (submissionId: string) => {
     setEvaluating(submissionId);
-    try {
-      const { data, error } = await supabase.functions.invoke("evaluate-submission", {
-        body: { submission_id: submissionId },
-      });
-      if (error) throw error;
-      if (data?.error) throw new Error(data.error);
+    const { error } = await invokeEdgeFunction("evaluate-submission", {
+      submission_id: submissionId,
+    });
+    if (error) {
+      toast({ title: "Evaluation failed", description: error.message, variant: "destructive" });
+    } else {
       toast({ title: "Evaluation complete" });
-      fetchData();
-    } catch (err: any) {
-      toast({ title: "Evaluation failed", description: err.message, variant: "destructive" });
-    } finally {
-      setEvaluating(null);
+      await fetchData();
     }
+    setEvaluating(null);
   };
 
   const pendingSubmissions = submissions.filter((s) => !evaluations[s.id]);
@@ -116,14 +114,13 @@ export default function TeacherAssignmentDetail() {
     let failCount = 0;
 
     for (const sub of toEvaluate) {
-      try {
-        const { data, error } = await supabase.functions.invoke("evaluate-submission", {
-          body: { submission_id: sub.id },
-        });
-        if (error || data?.error) throw error || new Error(data?.error);
-        successCount++;
-      } catch {
+      const { error } = await invokeEdgeFunction("evaluate-submission", {
+        submission_id: sub.id,
+      });
+      if (error) {
         failCount++;
+      } else {
+        successCount++;
       }
       setBatchProgress((prev) => ({ ...prev, done: prev.done + 1 }));
     }

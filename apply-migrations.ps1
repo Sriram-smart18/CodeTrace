@@ -15,7 +15,7 @@ param(
     [string]$DbPassword = ""
 )
 
-$ProjectRef = "uvuximrxlogvtgirtlsc"
+$ProjectRef = "fnvkthngkbrodsmjbuft"
 $ErrorActionPreference = "Stop"
 
 Write-Host "TraceCode Migration Tool" -ForegroundColor Cyan
