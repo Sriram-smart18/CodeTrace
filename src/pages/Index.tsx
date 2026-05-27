@@ -10,7 +10,7 @@ export default function Index() {
         <div className="container mx-auto flex items-center justify-between h-16 px-4">
           <div className="flex items-center gap-2">
             <span className="font-mono text-xl font-bold text-primary">&lt;/&gt;</span>
-            <span className="text-xl font-bold text-foreground">TraceCode</span>
+            <span className="text-xl font-bold text-foreground">CodeTrace</span>
           </div>
           <div className="flex items-center gap-2">
             <Button variant="ghost" size="sm" asChild>
@@ -95,7 +95,7 @@ export default function Index() {
       {/* Footer */}
       <footer className="border-t bg-card py-6">
         <div className="container mx-auto text-center text-sm text-muted-foreground">
-          © 2026 TraceCode V2 — AI-Powered Multi-Teacher Coding Classroom Platform
+          © 2026 CodeTrace V2 — AI-Powered Multi-Teacher Coding Classroom Platform
         </div>
       </footer>
     </div>

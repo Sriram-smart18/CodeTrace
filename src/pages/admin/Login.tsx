@@ -35,7 +35,7 @@ export default function AdminLogin() {
         <div className="text-center mb-8">
           <div className="inline-flex items-center gap-2 mb-2">
             <Shield className="h-8 w-8 text-primary" />
-            <span className="text-2xl font-bold text-foreground">TraceCode Admin</span>
+            <span className="text-2xl font-bold text-foreground">CodeTrace Admin</span>
           </div>
           <p className="text-muted-foreground text-sm">Platform Administration</p>
         </div>
@@ -48,7 +48,7 @@ export default function AdminLogin() {
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="email">Email</Label>
-                <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required placeholder="admin@tracecode.dev" />
+                <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required placeholder="admin@codetrace.dev" />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="password">Password</Label>
