@@ -1,0 +1,27 @@
+version: '3.8'
+
+services:
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "80:80"
+    depends_on:
+      - execution-server
+    restart: always
+
+  execution-server:
+    build:
+      context: ./execution-server
+      dockerfile: Dockerfile
+    ports:
+      - "3001:3001"
+    environment:
+      - PORT=3001
+      - MAX_MEMORY_MB=256
+      - MAX_OUTPUT_MB=5
+      - MAX_CPU_TIMEOUT_MS=10000
+      - MAX_WALL_TIMEOUT_MS=30000
+      - RATE_LIMIT_PER_MINUTE=20
+    restart: always

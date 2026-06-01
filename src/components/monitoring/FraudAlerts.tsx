@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { AlertTriangle, ShieldAlert, ShieldCheck, X, ChevronDown, ChevronUp } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
+import { realtimeManager } from "@/lib/realtimeManager";
 
 interface FraudAlert {
   id: string;
@@ -47,6 +48,13 @@ export function FraudAlerts({ students, assignments }: FraudAlertsProps) {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState(false);
 
+  const initializedRef = useRef(false);
+  const studentsRef = useRef(students);
+
+  useEffect(() => {
+    studentsRef.current = students;
+  }, [students]);
+
   useEffect(() => {
     const loadAlerts = async () => {
       const { data } = await supabase
@@ -59,27 +67,41 @@ export function FraudAlerts({ students, assignments }: FraudAlertsProps) {
     };
     loadAlerts();
 
-    // Realtime subscription for new alerts
-    const channel = supabase
-      .channel(`fraud-alerts-${Date.now()}`)
-      .on(
-        "postgres_changes",
-        { event: "INSERT", schema: "public", table: "fraud_alerts" },
-        (payload) => {
+    if (initializedRef.current) return;
+    initializedRef.current = true;
+
+    const channelName = "fraud-alerts-global";
+    const key = "fraud-alerts-sub";
+
+    try {
+      realtimeManager.subscribeToChannel({
+        key,
+        channelName,
+        config: {
+          event: "INSERT",
+          schema: "public",
+          table: "fraud_alerts",
+        },
+        callback: (payload) => {
           const newAlert = payload.new as FraudAlert;
           setAlerts((prev) => [newAlert, ...prev].slice(0, 50));
           const risk = newAlert.risk_level.toUpperCase();
-          const studentName = students[newAlert.student_id]?.name || "Unknown";
+          const studentName = studentsRef.current[newAlert.student_id]?.name || "Unknown";
           toast.warning(`⚠ ${risk} risk detected for ${studentName}`, {
             description: ALERT_TYPE_LABELS[newAlert.alert_type] || newAlert.alert_type,
             duration: 8000,
           });
         }
-      )
-      .subscribe();
+      });
+    } catch (error) {
+      console.error("[Realtime] Failed to subscribe to fraud alerts:", error);
+    }
 
-    return () => { supabase.removeChannel(channel); };
-  }, [students]);
+    return () => {
+      initializedRef.current = false;
+      realtimeManager.unsubscribeChannel(key);
+    };
+  }, []);
 
   const dismissAlert = async (alertId: string) => {
     await supabase.from("fraud_alerts").update({ dismissed: true }).eq("id", alertId);

@@ -1,7 +1,8 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { supabase } from "@/integrations/supabase/client";
+import { realtimeManager } from "@/lib/realtimeManager";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -38,28 +39,44 @@ export default function TeacherLiveSession() {
   const [assignment, setAssignment] = useState<Assignment | null>(null);
   const [students, setStudents] = useState<Profile[]>([]);
   const [events, setEvents] = useState<ActivityEvent[]>([]);
+  const [submissions, setSubmissions] = useState<any[]>([]);
   const [selectedStudent, setSelectedStudent] = useState<string | null>(null);
 
-  // Load assignment and students
+  const verdictBadge = (verdict: string | null) => {
+    if (!verdict) return <Badge variant="secondary" className="text-[9px] font-mono">Pending</Badge>;
+    if (verdict === "Accepted") return <Badge className="bg-green-600 hover:bg-green-600 text-white font-mono text-[9px] px-1 py-0 h-4 shrink-0">ACCEPTED</Badge>;
+    if (verdict === "Wrong Answer") return <Badge variant="destructive" className="font-mono text-[9px] px-1 py-0 h-4 shrink-0">WRONG ANSWER</Badge>;
+    if (verdict === "Compilation Error") return <Badge variant="outline" className="border-red-500 text-red-500 font-mono text-[9px] px-1 py-0 h-4 shrink-0">COMPILATION ERROR</Badge>;
+    return <Badge variant="outline" className="border-yellow-500 text-yellow-500 font-mono text-[9px] px-1 py-0 h-4 uppercase shrink-0">{verdict}</Badge>;
+  };
+
+  // Load assignment, students, and submissions
   useEffect(() => {
     if (!assignmentId) return;
 
     supabase.from("assignments").select("*").eq("id", assignmentId).single()
       .then(({ data }) => { if (data) setAssignment(data); });
 
-    supabase.from("activity_events").select("student_id")
-      .eq("assignment_id", assignmentId)
+    supabase.from("submissions").select("*").eq("assignment_id", assignmentId)
       .then(({ data }) => {
-        if (data) {
-          const uniqueIds = [...new Set(data.map((e: any) => e.student_id))];
-          if (uniqueIds.length > 0) {
-            supabase.from("profiles").select("*").in("user_id", uniqueIds)
-              .then(({ data: profiles }) => {
-                if (profiles) setStudents(profiles);
-              });
-          }
-        }
+        if (data) setSubmissions(data);
       });
+
+    Promise.all([
+      supabase.from("activity_events").select("student_id").eq("assignment_id", assignmentId),
+      supabase.from("submissions").select("student_id").eq("assignment_id", assignmentId)
+    ]).then(([eventsRes, subsRes]) => {
+      const idsFromEvents = eventsRes.data?.map((e: any) => e.student_id) || [];
+      const idsFromSubs = subsRes.data?.map((s: any) => s.student_id) || [];
+      const uniqueIds = [...new Set([...idsFromEvents, ...idsFromSubs])];
+
+      if (uniqueIds.length > 0) {
+        supabase.from("profiles").select("*").in("user_id", uniqueIds)
+          .then(({ data: profiles }) => {
+            if (profiles) setStudents(profiles);
+          });
+      }
+    });
 
     supabase.from("activity_events").select("*")
       .eq("assignment_id", assignmentId)
@@ -70,36 +87,102 @@ export default function TeacherLiveSession() {
       });
   }, [assignmentId]);
 
+  const initializedRef = useRef(false);
+
   // Realtime subscription
   useEffect(() => {
     if (!assignmentId) return;
+    if (initializedRef.current) return;
+    initializedRef.current = true;
 
-    const channel = supabase
-      .channel(`live-session-${assignmentId}`)
-      .on(
-        "postgres_changes",
-        { event: "INSERT", schema: "public", table: "activity_events" },
-        (payload) => {
+    const channelName = `live-session-${assignmentId}`;
+    const key = `live-session-sub-${assignmentId}`;
+
+    const subChannelName = `live-submissions-${assignmentId}`;
+    const subKey = `live-submissions-sub-${assignmentId}`;
+
+    try {
+      realtimeManager.subscribeToChannel({
+        key,
+        channelName,
+        config: {
+          event: "INSERT",
+          schema: "public",
+          table: "activity_events",
+        },
+        callback: (payload) => {
           const newEvent = payload.new as ActivityEvent;
           if (newEvent.assignment_id === assignmentId) {
             setEvents((prev) => [...prev.slice(-499), newEvent]);
 
-            if (!students.find((s) => s.user_id === newEvent.student_id)) {
+            setStudents((prevStudents) => {
+              if (prevStudents.find((s) => s.user_id === newEvent.student_id)) {
+                return prevStudents;
+              }
+              // If student profile not loaded, fetch it
               supabase.from("profiles").select("*").eq("user_id", newEvent.student_id).single()
                 .then(({ data }) => {
-                  if (data) setStudents((prev) => {
-                    if (prev.find((s) => s.user_id === data.user_id)) return prev;
-                    return [...prev, data];
-                  });
+                  if (data) {
+                    setStudents((currentStudents) => {
+                      if (currentStudents.find((s) => s.user_id === data.user_id)) return currentStudents;
+                      return [...currentStudents, data];
+                    });
+                  }
                 });
-            }
+              return prevStudents;
+            });
           }
         }
-      )
-      .subscribe();
+      });
 
-    return () => { supabase.removeChannel(channel); };
-  }, [assignmentId, students]);
+      realtimeManager.subscribeToChannel({
+        key: subKey,
+        channelName: subChannelName,
+        config: {
+          event: "*",
+          schema: "public",
+          table: "submissions",
+        },
+        callback: (payload) => {
+          const newSub = payload.new as any;
+          if (newSub.assignment_id === assignmentId) {
+            setSubmissions((prev) => {
+              const exists = prev.some((s) => s.id === newSub.id);
+              if (exists) {
+                return prev.map((s) => (s.id === newSub.id ? newSub : s));
+              } else {
+                return [...prev, newSub];
+              }
+            });
+
+            setStudents((prevStudents) => {
+              if (prevStudents.find((s) => s.user_id === newSub.student_id)) {
+                return prevStudents;
+              }
+              supabase.from("profiles").select("*").eq("user_id", newSub.student_id).single()
+                .then(({ data }) => {
+                  if (data) {
+                    setStudents((currentStudents) => {
+                      if (currentStudents.find((s) => s.user_id === data.user_id)) return currentStudents;
+                      return [...currentStudents, data];
+                    });
+                  }
+                });
+              return prevStudents;
+            });
+          }
+        }
+      });
+    } catch (error) {
+      console.error("[Realtime] Failed to subscribe to LiveSession events:", error);
+    }
+
+    return () => {
+      initializedRef.current = false;
+      realtimeManager.unsubscribeChannel(key);
+      realtimeManager.unsubscribeChannel(subKey);
+    };
+  }, [assignmentId]);
 
   const fiveMinAgo = Date.now() - 5 * 60 * 1000;
   const activeStudentIds = new Set(
@@ -177,6 +260,15 @@ export default function TeacherLiveSession() {
                     const isSelected = selectedStudent === student.user_id;
                     const stats = getStudentStats(student.user_id);
 
+                    const studentSubmissions = submissions.filter((s) => s.student_id === student.user_id);
+                    const highestScore = studentSubmissions.length > 0 
+                      ? Math.max(...studentSubmissions.map((s) => s.score || 0)) 
+                      : null;
+                    const latestSubmission = [...studentSubmissions].sort(
+                      (a, b) => new Date(b.submitted_at).getTime() - new Date(a.submitted_at).getTime()
+                    )[0];
+                    const latestVerdict = latestSubmission?.verdict || null;
+
                     return (
                       <button
                         key={student.user_id}
@@ -192,9 +284,23 @@ export default function TeacherLiveSession() {
                             }`}
                           />
                           <div className="min-w-0 flex-1">
-                            <div className="text-sm font-medium truncate">{student.name}</div>
-                            <div className="text-[10px] font-mono text-muted-foreground">
-                              {student.uid || "—"}
+                            <div className="flex items-center justify-between gap-1">
+                              <div className="text-sm font-medium truncate">{student.name}</div>
+                              {highestScore !== null && (
+                                <span className="text-xs font-mono font-semibold text-primary shrink-0">
+                                  {highestScore}%
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center justify-between gap-1 mt-0.5">
+                              <div className="text-[10px] font-mono text-muted-foreground truncate">
+                                {student.uid || "—"}
+                              </div>
+                              {latestVerdict && (
+                                <span className="shrink-0 scale-90 origin-right">
+                                  {verdictBadge(latestVerdict)}
+                                </span>
+                              )}
                             </div>
                           </div>
                         </div>

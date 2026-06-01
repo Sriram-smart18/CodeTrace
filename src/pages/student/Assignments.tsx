@@ -9,6 +9,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Code, Calendar, Clock, CheckCircle, AlertTriangle, Search, School, BookOpen } from "lucide-react";
+import { resolveWorkspaceType } from "@/utils/resolveWorkspaceType";
+import { useStudentAssignments } from "@/hooks/useWorkspaceQueries";
 
 // Type for assignment with nested classroom join
 interface AssignmentWithClassroom {
@@ -31,58 +33,13 @@ interface AssignmentWithClassroom {
 export default function StudentAssignments() {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const [assignments, setAssignments] = useState<AssignmentWithClassroom[]>([]);
-  const [submissions, setSubmissions] = useState<any[]>([]);
-  const [classrooms, setClassrooms] = useState<any[]>([]);
   const [selectedClassroom, setSelectedClassroom] = useState<string>("all");
   const [search, setSearch] = useState("");
-  const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    if (!user) return;
-    const load = async () => {
-      setLoading(true);
-      const { data: enrollments } = await supabase
-        .from("classroom_students")
-        .select("classroom_id")
-        .eq("student_id", user.id);
-
-      const classroomIds = enrollments?.map((e) => e.classroom_id) || [];
-
-      if (classroomIds.length === 0) {
-        setAssignments([]);
-        setClassrooms([]);
-        setLoading(false);
-        return;
-      }
-
-      const { data: rooms } = await supabase
-        .from("classrooms")
-        .select("id, classroom_name, subject_name")
-        .in("id", classroomIds)
-        .eq("is_active", true);
-      setClassrooms(rooms ?? []);
-
-      const { data: asgns } = await supabase
-        .from("assignments")
-        .select("*, classrooms(classroom_name, subject_name)")
-        .in("classroom_id", classroomIds)
-        .order("due_date", { ascending: true });
-      setAssignments((asgns ?? []) as AssignmentWithClassroom[]);
-
-      if (asgns && asgns.length > 0) {
-        const aIds = asgns.map((a) => a.id);
-        const { data: subs } = await supabase
-          .from("submissions")
-          .select("*")
-          .eq("student_id", user.id)
-          .in("assignment_id", aIds);
-        setSubmissions(subs ?? []);
-      }
-      setLoading(false);
-    };
-    load();
-  }, [user]);
+  const { data, isLoading: loading } = useStudentAssignments(user?.id);
+  const assignments = data?.assignments || [];
+  const classrooms = data?.classrooms || [];
+  const submissions = data?.submissions || [];
 
   const getSubmission = (assignmentId: string) => submissions.find((s) => s.assignment_id === assignmentId);
 
@@ -231,7 +188,7 @@ export default function StudentAssignments() {
                     </div>
                     <Button
                       className="w-full mt-auto"
-                      onClick={() => navigate(`/student/editor/${a.id}`)}
+                      onClick={() => navigate(`/student/${resolveWorkspaceType(a) === 'sandbox' ? 'project-builder' : 'editor'}/${a.id}`)}
                     >
                       <Code className="h-4 w-4 mr-2" />
                       {sub ? "View / Edit" : "Open Assignment"}

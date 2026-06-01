@@ -1,4 +1,4 @@
-import { Users, LayoutDashboard, LogOut, BookOpen, FileText, Activity, School } from "lucide-react";
+import { Users, LayoutDashboard, LogOut, BookOpen, FileText, Activity, School, BarChart3 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useAuth } from "@/contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
@@ -22,6 +22,7 @@ const items = [
   { title: "Assignments", url: "/teacher/assignments", icon: BookOpen },
   { title: "Submissions", url: "/teacher/submissions", icon: FileText },
   { title: "Monitoring", url: "/teacher/monitoring", icon: Activity },
+  { title: "Reports", url: "/teacher/reports", icon: BarChart3 },
 ];
 
 export function TeacherSidebar() {

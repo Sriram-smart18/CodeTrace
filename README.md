@@ -9,53 +9,69 @@ TraceCode is a web-based learning platform where teachers can create and monitor
 ## ✨ Features
 
 ### 👨‍🎓 Student Portal
-- **Dashboard** — Overview of active assignments, recent submissions, and progress
-- **Code Editor** — Monaco-powered in-browser editor supporting Python and JavaScript
-- **Interactive Terminal** — Real-time terminal (xterm.js) with stdin/stdout for interactive programs
-- **Assignments** — Browse and filter assigned coding tasks
-- **Submissions** — View all past submission history with status tracking
-- **Project Builder** — Dedicated workspace for multi-file project construction
+- **Dashboard** — Overview of active assignments, recent submissions, and progress analytics with charts.
+- **Code Editor** — Monaco-powered in-browser editor supporting Python and JavaScript with syntax highlighting and autocompletion.
+- **Interactive Terminal** — Real-time terminal (`xterm.js`) with `stdin`/`stdout` for interactive programs.
+- **Resizable Layouts** — Drag-and-drop resizable panels for custom workspace arrangement.
+- **Assignments** — Browse and filter assigned coding tasks.
+- **Submissions** — View all past submission history with status tracking and virtualized lists for performance.
+- **Project Builder** — Dedicated workspace for multi-file project construction.
 
 ### 👩‍🏫 Teacher Portal
-- **Dashboard** — Class-wide statistics, recent activity, and submission overview
-- **Assignment Management** — Create, edit, and manage coding assignments with due dates
-- **Student Management** — View enrolled students and their activity
-- **Submission Review** — Browse all submissions per assignment with code diffs and results
-- **Live Monitoring** — Real-time view of students actively working during a session
-- **Live Session** — Launch a proctored live coding session with per-assignment tracking
-- **Assignment Detail** — Deep-dive analytics per assignment with individual student breakdowns
+- **Dashboard** — Class-wide statistics, recent activity, and submission overview using dynamic charts (`recharts`).
+- **Assignment Management** — Create, edit, and manage coding assignments with strict due dates.
+- **Student Management** — View enrolled students and monitor their activity.
+- **Submission Review** — Browse all submissions per assignment with detailed code diffs and results.
+- **Live Monitoring** — Real-time view of students actively working during a session via Supabase Realtime.
+- **Live Session Proctoring** — Launch a proctored live coding session with per-assignment tracking and fraud detection.
+- **AI-Powered Evaluation** — Automated code evaluation, grading, and feedback generation using Groq (`llama-3.1-8b-instant`).
+- **Plagiarism Detection** — Peer similarity checking to ensure academic integrity.
+- **Assignment Detail** — Deep-dive analytics per assignment with individual student breakdowns.
 
-### ⚙️ Execution Engine
-- Sandboxed code execution via a dedicated **Node.js execution server**
-- Supports **Python** and **JavaScript** out of the box
-- **Resource limits** enforced per session:
+### ⚙️ Execution Engine & Infrastructure
+- Sandboxed code execution via a dedicated **Node.js execution server**.
+- Supports **Python** and **JavaScript** out of the box with Piston API support.
+- **Resource limits** enforced per session (monitored via `pidusage`):
   - ⏱️ Absolute timeout: **5 minutes**
   - 💤 Idle timeout: **60 seconds**
   - 💾 Memory limit: **512 MB**
   - 🔥 CPU limit: **95%**
   - 📤 Output limit: **1 MB**
-- Real-time I/O streaming over **Socket.IO**
-- Interactive `stdin` support for programs requiring user input
-- Automatic cleanup of temp files and processes on disconnect
+- Real-time I/O streaming over **Socket.IO** (bi-directional communication).
+- Interactive `stdin` support for programs requiring user input.
+- Automatic cleanup of temp files and processes on disconnect.
+
+### 🎨 UI & UX Highlights
+- **Premium Design System** — Built with `shadcn/ui` and Radix UI primitives.
+- **Dark Mode Support** — Seamless light/dark theme switching (`next-themes`).
+- **Fluid Animations** — Micro-interactions, page transitions, and list animations powered by Framer Motion.
+- **Responsive & Accessible** — fully responsive layouts with ARIA-compliant UI components.
+- **Command Menu** — Quick navigation via `cmdk` command palette.
+- **Rich Notifications** — Toast notifications via `sonner` and `vaul` drawers.
 
 ---
 
 ## 🛠️ Tech Stack
 
-| Layer | Technology |
-|---|---|
-| **Frontend** | React 18, TypeScript, Vite |
-| **UI Library** | shadcn/ui (Radix UI primitives) |
-| **Styling** | Tailwind CSS v3 |
-| **Routing** | React Router DOM v6 |
-| **State / Data** | TanStack React Query v5 |
-| **Code Editor** | Monaco Editor (`@monaco-editor/react`) |
-| **Terminal** | xterm.js + xterm-addon-fit |
-| **Animations** | Framer Motion |
-| **Backend / Auth / DB** | Supabase (Auth + PostgreSQL + Realtime) |
-| **Execution Server** | Node.js + Express + Socket.IO |
-| **Forms** | React Hook Form + Zod |
-| **Testing** | Vitest + Testing Library + Playwright |
+| Layer | Technology | Description |
+|---|---|---|
+| **Core Framework** | React 18, TypeScript, Vite | Fast, modern frontend toolchain using the SWC compiler. |
+| **State Management** | Zustand, TanStack React Query v5 | Global state management (Zustand) and robust server-state caching (React Query). |
+| **Routing** | React Router DOM v6 | Client-side routing with nested routes and role-based guards. |
+| **Styling & Theming** | Tailwind CSS v3, `next-themes` | Utility-first styling with comprehensive light/dark mode support. |
+| **UI Components** | `shadcn/ui`, Radix UI | Accessible, headless UI primitives including Dialogs, Popovers, Tabs, and Selects. |
+| **Icons & Design** | Lucide React | Clean, consistent SVG icon set. |
+| **Forms & Validation** | React Hook Form, Zod | Type-safe form handling and schema validation. |
+| **Code Editor** | Monaco Editor | The same powerful editor engine that powers VS Code (`@monaco-editor/react`). |
+| **Terminal** | `xterm.js`, `@xterm/addon-fit` | Fully featured terminal emulator running directly in the browser. |
+| **Real-time Engine** | Socket.IO | Bi-directional, low-latency communication for the execution server and terminal. |
+| **Animations** | Framer Motion, `tailwindcss-animate` | Complex layout animations, page transitions, and declarative UI motion. |
+| **Data Visualization** | Recharts | Composable charting library for dashboard analytics. |
+| **Advanced Layouts** | `react-resizable-panels`, `react-window` | Draggable split-panes and high-performance virtualized lists. |
+| **Backend & DB** | Supabase | Managed PostgreSQL, Authentication, Realtime Subscriptions, and Edge Functions. |
+| **Execution Server** | Node.js, Express, `pidusage` | Custom execution engine for running untrusted code in isolated processes. |
+| **AI Integrations** | Groq (`llama-3.1-8b-instant`) | Fast LLM inference for AI evaluations and code feedback. |
+| **Testing** | Vitest, React Testing Library, Playwright | Comprehensive unit, component, and End-to-End testing. |
 
 ---
 
@@ -187,6 +203,28 @@ npm run dev
 
 The app will be available at `http://localhost:5173` (or the port Vite assigns).
 
+### 6. Start via Docker Compose (Recommended for Production / Local Sandboxing)
+
+You can launch the complete, containerized TraceCode ecosystem using:
+
+```bash
+# Build and run all services (frontend + execution sandbox)
+docker-compose up --build
+```
+* **Frontend SPA client**: Available at `http://localhost` (mapped to port 80).
+* **Execution Server**: Available at `http://localhost:3001` (mapped to port 3001).
+
+---
+
+## 📖 Release Documentation
+
+For complete administrative setup and guides, see:
+* 🌐 **[System Architecture Reference](file:///c:/Users/patar/OneDrive/Desktop/Tracecode/Architecture.md)** — Architectural design, sandboxing rules, and database policies.
+* 👩‍🏫 **[Teacher Portal Guide](file:///c:/Users/patar/OneDrive/Desktop/Tracecode/TeacherGuide.md)** — Assignment setup, hidden test configurations, and proctoring.
+* 👨‍🎓 **[Student Portal Guide](file:///c:/Users/patar/OneDrive/Desktop/Tracecode/StudentGuide.md)** — Monaco workflow, terminal usage, and submissions.
+* 🔌 **[API endpoints Specification](file:///c:/Users/patar/OneDrive/Desktop/Tracecode/API.md)** — Socket.IO channel listeners and JSON payload definitions.
+* 💾 **[Backup & Retention Policies](file:///c:/Users/patar/OneDrive/Desktop/Tracecode/BackupStrategy.md)** — SQL cron backup routines and metric database sweeps.
+
 ---
 
 ## 🧪 Testing
@@ -230,8 +268,8 @@ Routes are protected via the `ProtectedRoute` component which checks both authen
 ## ⚠️ Environment & Security Notes
 
 - Never commit your `.env` file — it's listed in `.gitignore`
-- The execution server runs user code in child processes. For production, consider running it inside a container (Docker) with additional OS-level sandboxing
-- Resource limits (memory, CPU, timeout) are enforced server-side and cannot be bypassed by the client
+- The execution server runs user code inside spawned child processes inside the Docker container securely isolated as an unprivileged user.
+- Resource limits (memory, CPU, timeout) are enforced server-side and cannot be bypassed by the client.
 
 ---
 

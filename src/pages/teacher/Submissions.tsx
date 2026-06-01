@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { supabase } from "@/integrations/supabase/client";
 import { invokeEdgeFunction } from "@/lib/invokeEdgeFunction";
@@ -9,7 +9,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Brain, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { IntegrityReport, type IntegrityEvaluation } from "@/components/IntegrityReport";
-
+import { aiQueueService } from "@/lib/aiQueueService";
+import { subscriptionManager } from "@/lib/subscriptionManager";
 
 export default function TeacherSubmissions() {
   const [submissions, setSubmissions] = useState<any[]>([]);
@@ -54,20 +55,55 @@ export default function TeacherSubmissions() {
     }
   };
 
-  useEffect(() => { fetchData(); }, []);
+  const initializedRef = useRef(false);
+
+  useEffect(() => {
+    fetchData();
+
+    if (initializedRef.current) return;
+    initializedRef.current = true;
+
+    let unsub = () => {};
+
+    try {
+      // Listen to background evaluation job changes
+      unsub = subscriptionManager.subscribe(
+        "teacher-submissions-jobs",
+        "evaluation_jobs",
+        "*",
+        undefined,
+        () => {
+          fetchData();
+        }
+      );
+    } catch (err) {
+      console.error("[Realtime] Failed to subscribe to background evaluation job telemetry:", err);
+    }
+
+    return () => {
+      initializedRef.current = false;
+      unsub();
+    };
+  }, []);
 
   const handleEvaluate = async (submissionId: string) => {
     setEvaluating(submissionId);
-    const { error } = await invokeEdgeFunction("evaluate-submission", {
-      submission_id: submissionId,
-    });
-    if (error) {
-      toast({ title: "Evaluation failed", description: error.message, variant: "destructive" });
-    } else {
-      toast({ title: "Evaluation complete", description: "AI has evaluated the submission." });
+    try {
+      await aiQueueService.enqueueJob(submissionId);
+      toast({
+        title: "Evaluation Job Enqueued",
+        description: "The submission has been queued for background AI evaluation.",
+      });
       await fetchData();
+    } catch (error: any) {
+      toast({
+        title: "Failed to queue evaluation",
+        description: error.message || "An error occurred",
+        variant: "destructive",
+      });
+    } finally {
+      setEvaluating(null);
     }
-    setEvaluating(null);
   };
 
   const openDetail = (eval_: IntegrityEvaluation) => {

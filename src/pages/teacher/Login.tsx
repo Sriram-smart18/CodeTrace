@@ -56,9 +56,12 @@ export default function TeacherLogin() {
                 {loading ? "Signing in..." : "Sign In"}
               </Button>
             </form>
-            <div className="mt-4 text-center text-sm text-muted-foreground">
-              Don't have an account?{" "}
-              <Link to="/teacher/signup" className="text-primary hover:underline font-medium">Sign up</Link>
+            <div className="mt-4 flex items-center justify-between text-sm">
+              <Link to="/forgot-password" style={{ color: "rgb(156 163 175)" }} className="hover:text-foreground hover:underline">Forgot password?</Link>
+              <div className="text-muted-foreground">
+                Don't have an account?{" "}
+                <Link to="/teacher/signup" className="text-primary hover:underline font-medium">Sign up</Link>
+              </div>
             </div>
             <div className="mt-2 text-center text-sm text-muted-foreground">
               Are you a student?{" "}

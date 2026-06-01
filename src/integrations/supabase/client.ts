@@ -17,5 +17,6 @@ export const supabase = createClient<Database>(supabaseUrl, supabaseKey, {
     storage: localStorage,
     persistSession: true,
     autoRefreshToken: true,
+    detectSessionInUrl: true,
   },
 });

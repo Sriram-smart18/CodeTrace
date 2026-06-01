@@ -19,4 +19,9 @@ export default defineConfig(({ mode }) => ({
     },
     dedupe: ["react", "react-dom", "react/jsx-runtime", "react/jsx-dev-runtime", "@tanstack/react-query", "@tanstack/query-core"],
   },
+  define: {
+    'import.meta.env.VITE_BUILD_ID': JSON.stringify(
+      process.env.VITE_BUILD_ID || `build-${Math.floor(Date.now() / 1000)}`
+    ),
+  },
 }));

@@ -3,7 +3,7 @@ import { Navigate } from "react-router-dom";
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
-  requiredRole: "student" | "teacher" | "admin";
+  requiredRole?: "student" | "teacher" | "admin";
 }
 
 export function ProtectedRoute({ children, requiredRole }: ProtectedRouteProps) {
@@ -23,10 +23,11 @@ export function ProtectedRoute({ children, requiredRole }: ProtectedRouteProps) 
   if (!session) {
     // Redirect to appropriate login
     if (requiredRole === "admin") return <Navigate to="/admin/login" replace />;
-    return <Navigate to={`/${requiredRole}/login`} replace />;
+    if (requiredRole) return <Navigate to={`/${requiredRole}/login`} replace />;
+    return <Navigate to="/student/login" replace />;
   }
 
-  if (profile && profile.role !== requiredRole) {
+  if (requiredRole && profile && profile.role !== requiredRole) {
     // Redirect to their own dashboard
     return <Navigate to={`/${profile.role}/dashboard`} replace />;
   }
