@@ -5,28 +5,56 @@ interface ActivityTrackerOptions {
   studentId: string | undefined;
   assignmentId: string | undefined;
   language: string;
+  socketRef?: React.MutableRefObject<any>;
 }
 
-export function useActivityTracker({ studentId, assignmentId, language }: ActivityTrackerOptions) {
+export function useActivityTracker({ studentId, assignmentId, language, socketRef }: ActivityTrackerOptions) {
   const lastTypingRef = useRef<number>(0);
   const TYPING_THROTTLE_MS = 3000; // send at most one typing event per 3s
 
   const sendEvent = useCallback(
     async (eventType: string, codeSnapshot?: string) => {
-      if (!studentId) return;
+      if (!studentId || !assignmentId) return;
+
+      const payload = {
+        eventType,
+        studentId,
+        assignmentId,
+        codeSnapshot: codeSnapshot?.slice(0, 2000) || null,
+        language,
+        timestamp: new Date().toISOString(),
+      };
+
+      // 1. Emit via Socket.IO (Socket.IO OR Supabase Realtime - we emit to both for maximum robustness)
+      if (socketRef && socketRef.current && socketRef.current.connected) {
+        console.log(`[STUDENT_EVENT_SENT] Sent activity event: ${eventType}`);
+        socketRef.current.emit("student_activity", payload);
+      } else {
+        console.warn(`[SOCKET] Socket not connected for activity event: ${eventType}`);
+      }
+
+      // 2. Write to Supabase DB (except 'save' which violates DB check constraint - map to 'typing')
+      const dbEventType = eventType === "save" ? "typing" : eventType;
+
       try {
-        await supabase.from("activity_events").insert({
+        const { error } = await supabase.from("activity_events").insert({
           student_id: studentId,
-          assignment_id: assignmentId || null,
-          event_type: eventType,
+          assignment_id: assignmentId,
+          event_type: dbEventType,
           code_snapshot: codeSnapshot?.slice(0, 2000) || null,
           language,
         });
-      } catch {
-        // silently fail – don't disrupt student workflow
+
+        if (!error) {
+          console.log(`[DB_EVENT_STORED] Event stored in database: ${eventType}`);
+        } else {
+          console.error("[DB ERROR] Failed to store event:", error.message);
+        }
+      } catch (err: any) {
+        console.error("[DB ERROR] Exception while storing event:", err.message);
       }
     },
-    [studentId, assignmentId, language]
+    [studentId, assignmentId, language, socketRef]
   );
 
   const trackTyping = useCallback(
@@ -49,6 +77,11 @@ export function useActivityTracker({ studentId, assignmentId, language }: Activi
     [sendEvent]
   );
 
+  const trackSave = useCallback(
+    (code: string) => sendEvent("save", code),
+    [sendEvent]
+  );
+
   const trackPaste = useCallback(
     (code: string) => sendEvent("paste", code),
     [sendEvent]
@@ -57,5 +90,5 @@ export function useActivityTracker({ studentId, assignmentId, language }: Activi
   const trackFocus = useCallback(() => sendEvent("focus"), [sendEvent]);
   const trackBlur = useCallback(() => sendEvent("blur"), [sendEvent]);
 
-  return { trackTyping, trackRun, trackSubmit, trackPaste, trackFocus, trackBlur };
+  return { trackTyping, trackRun, trackSubmit, trackSave, trackPaste, trackFocus, trackBlur };
 }

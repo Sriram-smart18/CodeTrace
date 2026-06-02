@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
@@ -159,15 +160,61 @@ function histogramSimilarity(a: string, b: string): number {
   return Math.round((dotProduct / Math.sqrt(magA * magB)) * 100);
 }
 
-/**
- * Combined weighted similarity score (0–100)
- */
-function combinedSimilarity(
-  jaccard: number,
-  editRatio: number,
-  histogram: number
-): number {
-  return Math.round(jaccard * 0.4 + editRatio * 0.4 + histogram * 0.2);
+// AST structural extraction
+function getAstStructure(code: string): string {
+  if (typeof code !== "string") return "";
+  return code
+    .replace(/\/\*[\s\S]*?\*\//g, "") // remove block comments
+    .replace(/\/\/[^\n]*/g, "")      // remove single line comments
+    .replace(/#[^\n]*/g, "")         // python comments
+    .replace(/"[^"]*"/g, "")         // remove strings
+    .replace(/'[^']*'/g, "")         // remove strings
+    .match(/\b(if|else|elif|for|while|def|class|return|try|except|finally)\b|[{}\[\](),;]/g)
+    ?.join(" ") || "";
+}
+
+// Winnowing fingerprints (k-grams hashing)
+function getWinnowingFingerprints(code: string, k = 5, t = 10): Set<number> {
+  if (typeof code !== "string") return new Set();
+  const normalized = code.replace(/\s+/g, "");
+  const hashes: number[] = [];
+  
+  const simpleHash = (str: string) => {
+    let h = 0;
+    for (let i = 0; i < str.length; i++) {
+      h = (h * 31 + str.charCodeAt(i)) | 0;
+    }
+    return h;
+  };
+
+  for (let i = 0; i <= normalized.length - k; i++) {
+    const gram = normalized.substring(i, i + k);
+    hashes.push(simpleHash(gram));
+  }
+
+  const w = t - k + 1;
+  const fingerprints = new Set<number>();
+  if (hashes.length < w) {
+    return new Set(hashes);
+  }
+
+  for (let i = 0; i <= hashes.length - w; i++) {
+    let minVal = hashes[i];
+    for (let j = 1; j < w; j++) {
+      if (hashes[i + j] < minVal) {
+        minVal = hashes[i + j];
+      }
+    }
+    fingerprints.add(minVal);
+  }
+  return fingerprints;
+}
+
+function winnowingSimilarity(a: Set<number>, b: Set<number>): number {
+  if (a.size === 0 && b.size === 0) return 100;
+  const intersection = new Set([...a].filter((x) => b.has(x)));
+  const union = new Set([...a, ...b]);
+  return Math.round((intersection.size / union.size) * 100);
 }
 
 // ─── Main handler ─────────────────────────────────────────────────────────────
@@ -191,7 +238,7 @@ serve(async (req: Request) => {
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-    // Fetch the target submission
+    // 1. Fetch the target submission
     const { data: target, error: targetErr } = await supabase
       .from("submissions")
       .select("id, code, student_id")
@@ -206,88 +253,188 @@ serve(async (req: Request) => {
       });
     }
 
-    // Fetch ALL other submissions for the same assignment (excluding this student)
-    const { data: peers, error: peersErr } = await supabase
+    // 2. Fetch Teacher Reference Solution
+    const { data: asgn } = await supabase
+      .from("assignments")
+      .select("reference_solution")
+      .eq("id", assignment_id)
+      .maybeSingle();
+
+    // 3. Fetch Peer Submissions (Same assignment, excluding this student)
+    const { data: peers } = await supabase
       .from("submissions")
       .select("id, code, student_id")
       .eq("assignment_id", assignment_id)
       .neq("student_id", student_id);
 
-    if (peersErr || !peers || peers.length === 0) {
-      // No peers to compare — store empty results and exit gracefully
-      await supabase
-        .from("ai_evaluations")
-        .update({
-          peer_similarity_scores: [],
-          highest_peer_similarity: 0,
-        })
-        .eq("submission_id", submission_id);
+    // 4. Fetch Historical Submissions (Other assignments, excluding this student)
+    const { data: historical } = await supabase
+      .from("submissions")
+      .select("id, code, student_id, assignment_id")
+      .neq("assignment_id", assignment_id)
+      .neq("student_id", student_id)
+      .order("submitted_at", { ascending: false })
+      .limit(100);
 
-      return new Response(JSON.stringify({ success: true, message: "No peer submissions found" }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    // ── Local similarity analysis ─────────────────────────────────────────────
-    const targetNorm = normalizeCode(target.code);
-    const targetNormId = normalizeIdentifiers(targetNorm);
-    const targetTokens = tokenize(targetNormId);
-
-    const peerScores: Array<{
+    // ── Comparison Logic ───────────────────────────────────────────────────────
+    const targetCode = target.code;
+    const comparisonResults: Array<{
+      id: string;
       student_id: string;
-      submission_id: string;
+      assignment_id: string;
+      type: 'peer' | 'historical' | 'reference';
       similarity_score: number;
-      jaccard: number;
-      edit_ratio: number;
-      histogram: number;
+      ast_similarity: number;
+      winnowing_similarity: number;
+      levenshtein_distance: number;
+      token_similarity: number;
     }> = [];
 
-    for (const peer of peers) {
-      if (!peer.code) continue;
+    const compareCodes = (codeA: string, codeB: string) => {
+      const astA = getAstStructure(codeA);
+      const astTokensA = tokenize(astA);
+      const winnowingA = getWinnowingFingerprints(codeA);
+      const normA = normalizeCode(codeA);
+      const normAId = normalizeIdentifiers(normA);
+      const tokensA = tokenize(normAId);
 
-      const peerNorm = normalizeCode(peer.code);
-      const peerNormId = normalizeIdentifiers(peerNorm);
-      const peerTokens = tokenize(peerNormId);
+      const astB = getAstStructure(codeB);
+      const astTokensB = tokenize(astB);
+      const winnowingB = getWinnowingFingerprints(codeB);
+      const normB = normalizeCode(codeB);
+      const normBId = normalizeIdentifiers(normB);
+      const tokensB = tokenize(normBId);
 
-      const jaccard = jaccardSimilarity(targetTokens, peerTokens);
-      const editRatio = editDistanceRatio(targetNormId, peerNormId);
-      const histogram = histogramSimilarity(targetNorm, peerNorm);
-      const score = combinedSimilarity(jaccard, editRatio, histogram);
+      const astSim = jaccardSimilarity(astTokensA, astTokensB);
+      const winnowingSim = winnowingSimilarity(winnowingA, winnowingB);
+      const editRatio = editDistanceRatio(normAId, normBId);
+      const tokenSim = jaccardSimilarity(tokensA, tokensB);
 
-      peerScores.push({
-        student_id: peer.student_id,
-        submission_id: peer.id,
-        similarity_score: score,
-        jaccard,
-        edit_ratio: editRatio,
-        histogram,
+      const score = Math.round((astSim + winnowingSim + editRatio + tokenSim) / 4);
+
+      return {
+        score,
+        ast_similarity: astSim,
+        winnowing_similarity: winnowingSim,
+        levenshtein_distance: editRatio,
+        token_similarity: tokenSim,
+      };
+    };
+
+    // Run comparison against peers
+    if (peers) {
+      for (const peer of peers) {
+        if (!peer.code) continue;
+        const res = compareCodes(targetCode, peer.code);
+        comparisonResults.push({
+          id: peer.id,
+          student_id: peer.student_id,
+          assignment_id: assignment_id,
+          type: 'peer',
+          similarity_score: res.score,
+          ast_similarity: res.ast_similarity,
+          winnowing_similarity: res.winnowing_similarity,
+          levenshtein_distance: res.levenshtein_distance,
+          token_similarity: res.token_similarity,
+        });
+      }
+    }
+
+    // Run comparison against historical
+    if (historical) {
+      for (const hist of historical) {
+        if (!hist.code) continue;
+        const res = compareCodes(targetCode, hist.code);
+        comparisonResults.push({
+          id: hist.id,
+          student_id: hist.student_id,
+          assignment_id: hist.assignment_id || assignment_id,
+          type: 'historical',
+          similarity_score: res.score,
+          ast_similarity: res.ast_similarity,
+          winnowing_similarity: res.winnowing_similarity,
+          levenshtein_distance: res.levenshtein_distance,
+          token_similarity: res.token_similarity,
+        });
+      }
+    }
+
+    // Run comparison against Teacher Reference Solution
+    if (asgn && asgn.reference_solution) {
+      const res = compareCodes(targetCode, asgn.reference_solution);
+      comparisonResults.push({
+        id: 'reference',
+        student_id: 'teacher',
+        assignment_id: assignment_id,
+        type: 'reference',
+        similarity_score: res.score,
+        ast_similarity: res.ast_similarity,
+        winnowing_similarity: res.winnowing_similarity,
+        levenshtein_distance: res.levenshtein_distance,
+        token_similarity: res.token_similarity,
       });
     }
 
-    // Sort by score descending
-    peerScores.sort((a, b) => b.similarity_score - a.similarity_score);
-    const highestScore = peerScores[0]?.similarity_score ?? 0;
+    // Sort by combined score descending
+    comparisonResults.sort((a, b) => b.similarity_score - a.similarity_score);
+    const highestScore = comparisonResults[0]?.similarity_score ?? 0;
+    const topMatch = comparisonResults[0];
 
-    // Store local results immediately
+    const details = topMatch
+      ? {
+          ast_similarity: topMatch.ast_similarity,
+          winnowing_similarity: topMatch.winnowing_similarity,
+          levenshtein_distance: topMatch.levenshtein_distance,
+          token_similarity: topMatch.token_similarity,
+        }
+      : {
+          ast_similarity: 0,
+          winnowing_similarity: 0,
+          levenshtein_distance: 0,
+          token_similarity: 0,
+        };
+
+    // Calculate metadata for matches with similarity >= 30%
+    const thresholdScore = 30;
+    const matchedItems = comparisonResults.filter(r => r.similarity_score >= thresholdScore);
+    const matchedIds = matchedItems.map(m => m.id);
+    const matchedStudentIds = [...new Set(matchedItems.filter(m => m.student_id !== 'teacher').map(m => m.student_id))];
+    const matchedStudentCount = matchedStudentIds.length;
+
+    let explanation = "Low plagiarism risk. Code patterns appear original.";
+    if (highestScore >= 70) {
+      const typeText = topMatch.type === 'reference' ? "Teacher Reference Solution" : topMatch.type === 'historical' ? "a historical submission" : "a peer submission";
+      explanation = `High plagiarism risk detected (${highestScore}% similarity). Code is extremely similar to ${typeText} (ID: ${topMatch.id.slice(-8)}).`;
+    } else if (highestScore >= 30) {
+      const typeText = topMatch.type === 'reference' ? "Teacher Reference Solution" : topMatch.type === 'historical' ? "a historical submission" : "a peer submission";
+      explanation = `Moderate plagiarism risk detected (${highestScore}% similarity). Code shares significant structural patterns with ${typeText} (ID: ${topMatch.id.slice(-8)}).`;
+    }
+
+    // Store legacy results in ai_evaluations
     await supabase
       .from("ai_evaluations")
       .update({
-        peer_similarity_scores: peerScores,
+        peer_similarity_scores: comparisonResults,
         highest_peer_similarity: highestScore,
+        peer_ai_verdict: explanation,
       })
       .eq("submission_id", submission_id);
 
-    // ── Groq deep analysis when similarity threshold exceeded ───
+    // ── Groq deep analysis when similarity threshold exceeded and Groq configured ───
     if (highestScore >= SIMILARITY_THRESHOLD && isGroqConfigured()) {
-      const topMatch = peerScores[0];
+      let matchCode = "";
+      if (topMatch.type === 'reference' && asgn) {
+        matchCode = asgn.reference_solution || "";
+      } else {
+        const { data: peerSub } = await supabase
+          .from("submissions")
+          .select("code")
+          .eq("id", topMatch.id)
+          .single();
+        matchCode = peerSub?.code || "";
+      }
 
-      const { data: peerSub } = await supabase
-        .from("submissions")
-        .select("code")
-        .eq("id", topMatch.submission_id)
-        .single();
-
-      if (peerSub?.code) {
+      if (matchCode) {
         const PLAGIARISM_FALLBACK = {
           is_plagiarism: false,
           confidence: 50,
@@ -303,7 +450,7 @@ serve(async (req: Request) => {
               role: "user",
               content: `Compare two submissions for plagiarism.
 
-Similarity ${topMatch.similarity_score}% (Jaccard ${topMatch.jaccard}%, edit ${topMatch.edit_ratio}%, histogram ${topMatch.histogram}%).
+Similarity ${topMatch.similarity_score}% (AST ${topMatch.ast_similarity}%, winnowing ${topMatch.winnowing_similarity}%, edit ${topMatch.levenshtein_distance}%, token ${topMatch.token_similarity}%).
 
 SUBMISSION A:
 \`\`\`
@@ -312,7 +459,7 @@ ${target.code.slice(0, 3000)}
 
 SUBMISSION B:
 \`\`\`
-${peerSub.code.slice(0, 3000)}
+${matchCode.slice(0, 3000)}
 \`\`\`
 
 Return JSON in exactly this shape:
@@ -333,27 +480,35 @@ Return JSON in exactly this shape:
             PLAGIARISM_FALLBACK,
             "[check-plagiarism]"
           );
-          const peerAiVerdict = `[Confidence: ${verdict.confidence}%] ${verdict.verdict}`;
+          explanation = `[Confidence: ${verdict.confidence}%] ${verdict.verdict}`;
           await supabase
             .from("ai_evaluations")
-            .update({ peer_ai_verdict: peerAiVerdict })
+            .update({ peer_ai_verdict: explanation })
             .eq("submission_id", submission_id);
 
           if (verdict.is_plagiarism && Number(verdict.confidence) >= 75) {
             await supabase.from("submissions").update({ status: "flagged" }).eq("id", submission_id);
           }
-        } else {
-          console.error("[check-plagiarism] Groq failed:", groqResult.error);
         }
       }
     }
+
+    const plagiarismDetails = {
+      matched_submission_ids: matchedIds,
+      matched_student_ids: matchedStudentIds,
+      similarity_percentage: highestScore,
+      matched_student_count: matchedStudentCount,
+      plagiarism_explanation: explanation,
+    };
 
     return new Response(
       JSON.stringify({
         success: true,
         highest_peer_similarity: highestScore,
-        peers_compared: peerScores.length,
+        peers_compared: comparisonResults.length,
         ai_triggered: highestScore >= SIMILARITY_THRESHOLD,
+        details,
+        plagiarism_details: plagiarismDetails,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );

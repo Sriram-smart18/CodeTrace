@@ -14,6 +14,8 @@ app.use(express.json());
 
 const server = http.createServer(app);
 const io = new Server(server, {
+  pingInterval: 15000,
+  pingTimeout: 5000,
   cors: { origin: '*', methods: ['GET', 'POST'] }
 });
 
@@ -277,7 +279,50 @@ io.on('connection', (socket) => {
     }
   });
 
+  // Live monitoring room joining
+  socket.on('join_room', (roomId) => {
+    socket.join(roomId);
+    console.log(`[SOCKET ROOM JOIN] Client ${socket.id} joined room: ${roomId}`);
+  });
+
+  // Leave room handler
+  socket.on('leave_room', (roomId) => {
+    socket.leave(roomId);
+    console.log(`[SOCKET ROOM LEAVE] Client ${socket.id} left room: ${roomId}`);
+  });
+
+  // Relay code updates from student to teacher
+  socket.on('code_update', ({ roomId, code, language, studentId }) => {
+    console.log(`[SERVER_EVENT_RECEIVED] code_update from student: ${studentId}`);
+    // Relay to other clients (e.g. the teacher dashboard)
+    socket.to(roomId).emit('code_update', { roomId, code, language, studentId });
+  });
+
+  // Relay code request from teacher to student
+  socket.on('request_code', ({ roomId, studentId }) => {
+    console.log(`[SERVER_EVENT_RECEIVED] request_code targeting student: ${studentId}`);
+    socket.to(roomId).emit('request_code', { roomId, studentId });
+  });
+
+  // Handle student activity event emissions
+  socket.on('student_activity', (data) => {
+    const { eventType, studentId, assignmentId } = data;
+    console.log(`[SERVER_EVENT_RECEIVED] ${eventType} from student: ${studentId}`);
+    
+    // Relay to everyone in the room (such as the teacher dashboard)
+    const roomId = `room_${assignmentId}`;
+    socket.to(roomId).emit('student_activity', data);
+  });
+
+  // Custom ping handler
+  socket.on('ping', (data) => {
+    const sender = data?.studentId ? `student: ${data.studentId}` : (data?.teacherId ? 'teacher' : 'unknown');
+    console.log(`[SERVER_EVENT_RECEIVED] ping from ${sender}`);
+    socket.emit('pong');
+  });
+
   socket.on('run', async ({ sessionId, language, code, userId }) => {
+    console.log(`[SERVER_EVENT_RECEIVED] run from student: ${userId || 'anonymous'}`);
     if (!sessionId) return;
     
     // Strict UUID format validation to prevent path traversals

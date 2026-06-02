@@ -149,7 +149,9 @@ export default function TeacherMonitoring() {
               teacherAssignmentIds.length === 0 ||
               teacherAssignmentIds.includes(newEvent.assignment_id)
             ) {
+              console.log(`[REALTIME_EVENT_RECEIVED] activity_event: ${newEvent.event_type} from student: ${newEvent.student_id}`);
               setEvents((prev) => [...prev.slice(-199), newEvent]);
+              console.log(`[TEACHER_UI_UPDATED] UI updated with activity event: ${newEvent.event_type}`);
             }
           }
         );
@@ -161,7 +163,9 @@ export default function TeacherMonitoring() {
           "*",
           undefined,
           () => {
+            console.log(`[REALTIME_EVENT_RECEIVED] monitoring_sessions update received`);
             refetchSessions();
+            console.log(`[TEACHER_UI_UPDATED] UI updated with monitoring session update`);
           }
         );
 

@@ -237,6 +237,71 @@ export type Database = {
             referencedRelation: "assignments"
             referencedColumns: ["id"]
           },
+      }
+      assessment_results: {
+        Row: {
+          id: string
+          submission_id: string
+          assignment_id: string
+          student_id: string
+          overall_score: number
+          correctness_score: number
+          quality_score: number
+          plagiarism_score: number
+          risk_level: string
+          correctness_details: Json
+          quality_details: Json
+          plagiarism_details: Json
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          submission_id: string
+          assignment_id: string
+          student_id: string
+          overall_score: number
+          correctness_score: number
+          quality_score: number
+          plagiarism_score: number
+          risk_level: string
+          correctness_details?: Json
+          quality_details?: Json
+          plagiarism_details?: Json
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          submission_id?: string
+          assignment_id?: string
+          student_id?: string
+          overall_score?: number
+          correctness_score?: number
+          quality_score?: number
+          plagiarism_score?: number
+          risk_level?: string
+          correctness_details?: Json
+          quality_details?: Json
+          plagiarism_details?: Json
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "assessment_results_assignment_id_fkey"
+            columns: ["assignment_id"]
+            isOneToOne: false
+            referencedRelation: "assignments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "assessment_results_submission_id_fkey"
+            columns: ["submission_id"]
+            isOneToOne: true
+            referencedRelation: "submissions"
+            referencedColumns: ["id"]
+          }
         ]
       }
       ai_evaluations: {
@@ -261,6 +326,7 @@ export type Database = {
           peer_similarity_scores: Json | null
           plagiarism_indicators: Json | null
           plagiarism_score: number | null
+          plagiarism_details: Json | null
           risk_level: string | null
           student_id: string
           style_inconsistency_detected: boolean | null
@@ -317,6 +383,7 @@ export type Database = {
           peer_similarity_scores?: Json | null
           plagiarism_indicators?: Json | null
           plagiarism_score?: number | null
+          plagiarism_details?: Json | null
           risk_level?: string | null
           student_id?: string
           style_inconsistency_detected?: boolean | null
@@ -358,6 +425,7 @@ export type Database = {
           updated_at: string
           max_submissions: number | null
           supported_languages: string[] | null
+          reference_solution: string | null
         }
         Insert: {
           classroom_id?: string | null
@@ -375,6 +443,7 @@ export type Database = {
           updated_at?: string
           max_submissions?: number | null
           supported_languages?: string[] | null
+          reference_solution?: string | null
         }
         Update: {
           classroom_id?: string | null
@@ -392,6 +461,7 @@ export type Database = {
           updated_at?: string
           max_submissions?: number | null
           supported_languages?: string[] | null
+          reference_solution?: string | null
         }
         Relationships: [
           {
@@ -401,6 +471,91 @@ export type Database = {
             referencedRelation: "classrooms"
             referencedColumns: ["id"]
           },
+        ]
+      }
+      problems: {
+        Row: {
+          id: string
+          assignment_id: string
+          problem_statement: string
+          constraints: string | null
+          sample_input: string | null
+          sample_output: string | null
+          time_limit: number
+          memory_limit: number
+          reference_solution: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          assignment_id: string
+          problem_statement: string
+          constraints?: string | null
+          sample_input?: string | null
+          sample_output?: string | null
+          time_limit?: number
+          memory_limit?: number
+          reference_solution?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          assignment_id?: string
+          problem_statement?: string
+          constraints?: string | null
+          sample_input?: string | null
+          sample_output?: string | null
+          time_limit?: number
+          memory_limit?: number
+          reference_solution?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "problems_assignment_id_fkey"
+            columns: ["assignment_id"]
+            isOneToOne: true
+            referencedRelation: "assignments"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      test_cases: {
+        Row: {
+          id: string
+          assignment_id: string
+          input: string | null
+          expected_output: string
+          is_hidden: boolean
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          assignment_id: string
+          input?: string | null
+          expected_output: string
+          is_hidden?: boolean
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          assignment_id?: string
+          input?: string | null
+          expected_output?: string
+          is_hidden?: boolean
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "test_cases_assignment_id_fkey"
+            columns: ["assignment_id"]
+            isOneToOne: false
+            referencedRelation: "assignments"
+            referencedColumns: ["id"]
+          }
         ]
       }
       classroom_students: {
@@ -1113,3 +1268,5 @@ export const Constants = {
     },
   },
 } as const
+
+export type AssessmentResult = Database["public"]["Tables"]["assessment_results"]["Row"];

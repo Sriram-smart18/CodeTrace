@@ -12,6 +12,7 @@ import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/componen
 import { saveQueue } from "@/utils/saveQueue";
 import { useIdeHealth } from "@/hooks/useIdeHealth";
 import { SubsystemErrorBoundary } from "./error-boundaries/SubsystemErrorBoundary";
+import { useActivityTracker } from "@/hooks/useActivityTracker";
 
 import { Terminal as XTerm } from "xterm";
 import { FitAddon } from "@xterm/addon-fit";
@@ -56,14 +57,115 @@ export const AssignmentWorkspace: React.FC<AssignmentWorkspaceProps> = ({ assign
 
   const mountedRef = useRef(false);
 
-  // Cleanup socket on unmount
+  const monitoringSocketRef = useRef<Socket | null>(null);
+  const codeRef = useRef(code);
+  const languageRef = useRef(language);
+
+  // Keep refs updated to prevent stale closures in event callbacks
+  useEffect(() => {
+    codeRef.current = code;
+  }, [code]);
+
+  useEffect(() => {
+    languageRef.current = language;
+  }, [language]);
+
+  const { trackTyping, trackRun, trackSubmit, trackSave } = useActivityTracker({
+    studentId: user?.id,
+    assignmentId,
+    language,
+    socketRef: monitoringSocketRef
+  });
+
+  // Cleanup sockets on unmount
   useEffect(() => {
     return () => {
       if (socketRef.current) {
         socketRef.current.disconnect();
       }
+      if (monitoringSocketRef.current) {
+        monitoringSocketRef.current.disconnect();
+      }
     };
   }, []);
+
+  // Setup persistent Socket.IO connection for live monitoring
+  useEffect(() => {
+    if (!assignmentId || !user?.id) return;
+
+    const roomId = `room_${assignmentId}`;
+    console.log("[SOCKET CONNECT] Initiating student monitoring socket connection to", EXECUTION_SERVER_URL);
+    const socket = io(EXECUTION_SERVER_URL);
+    monitoringSocketRef.current = socket;
+
+    socket.on("connect", () => {
+      console.log(`[SOCKET CONNECT] Student connected to monitoring backend. Joining room: ${roomId}`);
+      socket.emit("join_room", roomId);
+    });
+
+    socket.on("disconnect", (reason) => {
+      console.log("[SOCKET DISCONNECT] Student monitoring socket disconnected. Reason:", reason);
+      if (reason === "io server disconnect" || reason === "transport close" || reason === "transport error" || reason === "ping timeout") {
+        console.log("[SOCKET RECOVERY] Attempting socket reconnection...");
+        socket.connect();
+      }
+    });
+
+    socket.on("connect_error", (error) => {
+      console.error("[SOCKET ERROR] Student monitoring connection error:", error.message);
+    });
+
+    socket.on("request_code", (data: any) => {
+      if (!data || !data.studentId || data.studentId === user.id) {
+        console.log("[SOCKET RECEIVE] Request code received from teacher. Emitting current code snapshot.");
+        socket.emit("code_update", {
+          roomId,
+          code: codeRef.current,
+          language: languageRef.current,
+          studentId: user.id
+        });
+      }
+    });
+
+    socket.on("pong", () => {
+      console.log("[SOCKET HEARTBEAT] Student received pong from server");
+    });
+
+    const heartbeatInterval = setInterval(() => {
+      if (socket.connected) {
+        console.log(`[STUDENT_EVENT_SENT] ping`);
+        socket.emit("ping", { studentId: user.id, timestamp: new Date().toISOString() });
+      }
+    }, 15000);
+
+    return () => {
+      console.log("[SOCKET DISCONNECT] Cleaning up student monitoring socket.");
+      clearInterval(heartbeatInterval);
+      socket.disconnect();
+      monitoringSocketRef.current = null;
+    };
+  }, [assignmentId, user?.id]);
+
+  // Emit code updates when code changes
+  useEffect(() => {
+    if (!assignmentId || !user?.id) return;
+    if (!monitoringSocketRef.current) return;
+
+    const roomId = `room_${assignmentId}`;
+    const timeout = setTimeout(() => {
+      if (monitoringSocketRef.current && monitoringSocketRef.current.connected) {
+        console.log("[SOCKET EMIT] Emitting code update. Length:", code.length);
+        monitoringSocketRef.current.emit("code_update", {
+          roomId,
+          code,
+          language,
+          studentId: user.id
+        });
+      }
+    }, 1000); // 1s debounce to avoid flooding the socket
+
+    return () => clearTimeout(timeout);
+  }, [code, language, assignmentId, user?.id]);
 
   useEffect(() => {
     if (!mountedRef.current) {
@@ -97,6 +199,8 @@ export const AssignmentWorkspace: React.FC<AssignmentWorkspaceProps> = ({ assign
         try {
           localStorage.setItem(`${keyPrefix}-code`, payload.code);
           localStorage.setItem(`${keyPrefix}-lang`, payload.language);
+          // Trigger save event emission
+          trackSave(payload.code);
         } catch (e) {
           console.error("Error saving to localStorage", e);
         }
@@ -219,6 +323,7 @@ export const AssignmentWorkspace: React.FC<AssignmentWorkspaceProps> = ({ assign
     }
 
     setExecState('executing');
+    trackRun(code);
     
     const sessionId = crypto.randomUUID();
     currentSessionIdRef.current = sessionId;
@@ -298,6 +403,7 @@ export const AssignmentWorkspace: React.FC<AssignmentWorkspaceProps> = ({ assign
         const { error } = await supabase.from("submissions").update(payload).eq("id", submission.id);
         if (error) throw error;
         toast({ title: "Submission Updated" });
+        trackSubmit(code);
       } else {
         const { data, error } = await supabase.from("submissions").insert({
           assignment_id: assignmentId,
@@ -307,6 +413,7 @@ export const AssignmentWorkspace: React.FC<AssignmentWorkspaceProps> = ({ assign
         if (error) throw error;
         if (data) setSubmission(data);
         toast({ title: "Code Submitted!" });
+        trackSubmit(code);
       }
     } catch (e: any) {
       toast({ title: "Submission Failed", description: e.message, variant: "destructive" });
@@ -418,7 +525,11 @@ export const AssignmentWorkspace: React.FC<AssignmentWorkspaceProps> = ({ assign
                       editorRef.current = editor;
                     }}
                     onChange={(val) => {
-                      if (!isLocked) setCode(val || "");
+                      if (!isLocked) {
+                        const newCode = val || "";
+                        setCode(newCode);
+                        trackTyping(newCode);
+                      }
                     }}
                     options={{
                       minimap: { enabled: false },

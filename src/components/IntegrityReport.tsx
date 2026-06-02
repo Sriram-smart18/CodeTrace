@@ -9,6 +9,7 @@ import {
   Keyboard, BarChart2, Users
 } from "lucide-react";
 import { useState } from "react";
+import { type AssessmentResult } from "@/integrations/supabase/types";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -66,6 +67,7 @@ export interface IntegrityEvaluation {
 
 interface IntegrityReportProps {
   evaluation: IntegrityEvaluation;
+  assessment?: AssessmentResult | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   totalMarks?: number;
@@ -173,10 +175,40 @@ function BehavioralMetric({ label, value, unit }: { label: string; value?: numbe
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export function IntegrityReport({ evaluation: ev, open, onOpenChange, totalMarks = 100 }: IntegrityReportProps) {
+export function IntegrityReport({ evaluation: ev, assessment, open, onOpenChange, totalMarks = 100 }: IntegrityReportProps) {
   const [segmentsOpen, setSegmentsOpen] = useState(false);
-  const riskKey = (ev.risk_level || "low").toLowerCase();
-  const risk = RISK_CONFIG[riskKey] || RISK_CONFIG.low;
+  const riskKey = assessment ? assessment.risk_level.toLowerCase() : (ev.risk_level || "low").toLowerCase();
+  
+  let risk = RISK_CONFIG[riskKey] || RISK_CONFIG.low;
+  if (assessment) {
+    const rLvl = assessment.risk_level.toUpperCase();
+    if (rLvl === "LOW") {
+      risk = {
+        label: "Low Risk",
+        color: "text-emerald-400",
+        bgColor: "bg-emerald-500/10",
+        borderColor: "border-emerald-500/30",
+        icon: <ShieldCheck className="h-4 w-4 text-emerald-400" />,
+      };
+    } else if (rLvl === "MEDIUM") {
+      risk = {
+        label: "Medium Risk",
+        color: "text-amber-400",
+        bgColor: "bg-amber-500/10",
+        borderColor: "border-amber-500/30",
+        icon: <ShieldAlert className="h-4 w-4 text-amber-400" />,
+      };
+    } else if (rLvl === "HIGH") {
+      risk = {
+        label: "High Risk",
+        color: "text-red-400",
+        bgColor: "bg-red-500/10",
+        borderColor: "border-red-500/30",
+        icon: <ShieldX className="h-4 w-4 text-red-400" />,
+      };
+    }
+  }
+
   const hasPeerData = ev.peer_similarity_scores && ev.peer_similarity_scores.length > 0;
   const topPeers = (ev.peer_similarity_scores || [])
     .slice(0, 5)
@@ -228,14 +260,41 @@ export function IntegrityReport({ evaluation: ev, open, onOpenChange, totalMarks
             {/* Score bars */}
             <div className="space-y-3">
               <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">Evaluation Scores</p>
-              <ScoreBar label="Correctness" score={ev.correctness_score} />
-              <ScoreBar label="Code Quality" score={ev.code_quality_score} />
-              <ScoreBar label="Plagiarism Risk" score={ev.plagiarism_score} inverted />
-              <ScoreBar label="AI-Generated Probability" score={ev.ai_probability_score} inverted />
+              
+              <ScoreBar label="Correctness" score={assessment ? assessment.correctness_score : ev.correctness_score} />
+              {assessment?.correctness_details && (
+                <div className="text-[11px] text-muted-foreground pl-4 -mt-2">
+                  Visible: {(assessment.correctness_details as any).visible_passed}/{(assessment.correctness_details as any).visible_total} passed | 
+                  Hidden: {(assessment.correctness_details as any).hidden_passed}/{(assessment.correctness_details as any).hidden_total} passed
+                </div>
+              )}
+
+              <ScoreBar label="Code Quality" score={assessment ? assessment.quality_score : ev.code_quality_score} />
+              {assessment?.quality_details && (
+                <div className="text-[11px] text-muted-foreground pl-4 -mt-2 grid grid-cols-2 gap-x-2 gap-y-0.5">
+                  <div>Readability: {(assessment.quality_details as any).readability}/100</div>
+                  <div>Naming: {(assessment.quality_details as any).naming}/100</div>
+                  <div>Modularity: {(assessment.quality_details as any).modularity}/100</div>
+                  <div>Complexity: {(assessment.quality_details as any).complexity}/100</div>
+                </div>
+              )}
+
+              <ScoreBar label="Plagiarism Risk" score={assessment ? (100 - assessment.plagiarism_score) : ev.plagiarism_score} inverted />
+              {assessment?.plagiarism_details && (
+                <div className="text-[11px] text-muted-foreground pl-4 -mt-2 grid grid-cols-2 gap-x-2 gap-y-0.5">
+                  <div>AST Similarity: {(assessment.plagiarism_details as any).ast_similarity}%</div>
+                  <div>Token Similarity: {(assessment.plagiarism_details as any).token_similarity}%</div>
+                  <div>Levenshtein Sim: {(assessment.plagiarism_details as any).levenshtein_distance}%</div>
+                  <div>Fingerprints (Winnowing): {(assessment.plagiarism_details as any).winnowing_similarity}%</div>
+                </div>
+              )}
+
+              {!assessment && <ScoreBar label="AI-Generated Probability" score={ev.ai_probability_score} inverted />}
+              
               <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50 border border-border/40">
                 <span className="text-sm font-medium">Total Score</span>
                 <span className="font-mono text-lg font-bold text-primary">
-                  {ev.total_score ?? "—"}/{totalMarks}
+                  {(assessment ? assessment.overall_score : ev.total_score) ?? "—"}/{totalMarks}
                 </span>
               </div>
             </div>

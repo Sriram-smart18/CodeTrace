@@ -19,8 +19,10 @@ import {
   ShieldAlert, Award, PlayCircle, Clock, Check, RefreshCw, BarChart2, Download, AlertTriangle
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import type { Tables } from "@/integrations/supabase/types";
+import { subscriptionManager } from "@/lib/subscriptionManager";
+import type { Tables, AssessmentResult } from "@/integrations/supabase/types";
 import { IntegrityReport, type IntegrityEvaluation } from "@/components/IntegrityReport";
+import { DiffEditor } from "@monaco-editor/react";
 
 type Assignment = Tables<"assignments">;
 
@@ -47,6 +49,7 @@ export default function TeacherAssignmentDetail() {
   const [assignment, setAssignment] = useState<Assignment | null>(null);
   const [submissions, setSubmissions] = useState<SubmissionWithProfile[]>([]);
   const [evaluations, setEvaluations] = useState<Record<string, IntegrityEvaluation>>({});
+  const [assessments, setAssessments] = useState<Record<string, AssessmentResult>>({});
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [riskFilter, setRiskFilter] = useState("all");
@@ -63,6 +66,7 @@ export default function TeacherAssignmentDetail() {
   const [constraints, setConstraints] = useState("");
   const [sampleInput, setSampleInput] = useState("");
   const [sampleOutput, setSampleOutput] = useState("");
+  const [referenceSolution, setReferenceSolution] = useState("");
   const [timeLimit, setTimeLimit] = useState(5);
   const [memoryLimit, setMemoryLimit] = useState(256);
   const [maxSubmissions, setMaxSubmissions] = useState("Unlimited");
@@ -71,6 +75,22 @@ export default function TeacherAssignmentDetail() {
   const [savingChallenge, setSavingChallenge] = useState(false);
   const [rejudgingAll, setRejudgingAll] = useState(false);
   const [rejudgingSubId, setRejudgingSubId] = useState<string | null>(null);
+
+  // Plagiarism report states
+  const [profilesMap, setProfilesMap] = useState<Record<string, { name: string; uid: string | null; email: string }>>({});
+  const [comparisonModalOpen, setComparisonModalOpen] = useState(false);
+  const [comparing, setComparing] = useState(false);
+  const [comparisonData, setComparisonData] = useState<{
+    leftCode: string;
+    leftLabel: string;
+    rightCode: string;
+    rightLabel: string;
+    language: string;
+    explanation: string;
+    matchedSubmissionIds: string[];
+    currentSubmission: SubmissionWithProfile;
+    selectedMatchId: string;
+  } | null>(null);
 
   // Test case dialog states
   const [tcDialogOpen, setTcDialogOpen] = useState(false);
@@ -89,6 +109,7 @@ export default function TeacherAssignmentDetail() {
       setAssignment(asgn);
       setMaxSubmissions(asgn.max_submissions !== null && asgn.max_submissions !== undefined ? String(asgn.max_submissions) : "Unlimited");
       setSupportedLanguages(asgn.supported_languages || []);
+      setReferenceSolution(asgn.reference_solution || "");
     }
 
     const { data: subs } = await supabase
@@ -96,14 +117,47 @@ export default function TeacherAssignmentDetail() {
       .eq("assignment_id", assignmentId)
       .order("submitted_at", { ascending: false });
 
+    const { data: evals } = await supabase
+      .from("ai_evaluations").select("*").eq("assignment_id", assignmentId);
+
+    const { data: assessList } = await supabase
+      .from("assessment_results").select("*").eq("assignment_id", assignmentId);
+
     if (subs) {
-      const studentIds = [...new Set(subs.map((s: any) => s.student_id))];
+      const studentIds = new Set<string>();
+      subs.forEach((s: any) => {
+        if (s.student_id) studentIds.add(s.student_id);
+      });
+
+      if (assessList) {
+        assessList.forEach((a: any) => {
+          const details = a.plagiarism_details as any;
+          if (details && Array.isArray(details.matched_student_ids)) {
+            details.matched_student_ids.forEach((id: string) => {
+              if (id && id !== "teacher") studentIds.add(id);
+            });
+          }
+        });
+      }
+
+      if (evals) {
+        evals.forEach((e: any) => {
+          const details = e.plagiarism_details as any;
+          if (details && Array.isArray(details.matched_student_ids)) {
+            details.matched_student_ids.forEach((id: string) => {
+              if (id && id !== "teacher") studentIds.add(id);
+            });
+          }
+        });
+      }
+
       const { data: profiles } = await supabase
         .from("profiles").select("user_id, name, uid, email")
-        .in("user_id", studentIds);
+        .in("user_id", Array.from(studentIds));
 
       const profileMap: Record<string, any> = {};
       profiles?.forEach((p: any) => { profileMap[p.user_id] = p; });
+      setProfilesMap(profileMap);
 
       const enriched = subs.map((s: any) => ({
         ...s,
@@ -112,12 +166,16 @@ export default function TeacherAssignmentDetail() {
       setSubmissions(enriched as SubmissionWithProfile[]);
     }
 
-    const { data: evals } = await supabase
-      .from("ai_evaluations").select("*").eq("assignment_id", assignmentId);
     if (evals) {
       const map: Record<string, IntegrityEvaluation> = {};
       evals.forEach((e: any) => { map[e.submission_id] = e; });
       setEvaluations(map);
+    }
+
+    if (assessList) {
+      const map: Record<string, AssessmentResult> = {};
+      assessList.forEach((a: any) => { map[a.submission_id] = a; });
+      setAssessments(map);
     }
 
     // Load problem configurations (Phase 1)
@@ -134,6 +192,7 @@ export default function TeacherAssignmentDetail() {
       setSampleOutput(prob.sample_output || "");
       setTimeLimit(prob.time_limit || 5);
       setMemoryLimit(prob.memory_limit || 256);
+      setReferenceSolution(prob.reference_solution || "");
     }
 
     // Load test cases list (Phase 1)
@@ -148,7 +207,45 @@ export default function TeacherAssignmentDetail() {
     }
   };
 
-  useEffect(() => { fetchData(); }, [assignmentId]);
+  useEffect(() => {
+    fetchData();
+
+    let unsubJobs = () => {};
+    let unsubAssess = () => {};
+
+    try {
+      unsubJobs = subscriptionManager.subscribe(
+        "teacher-assignment-detail-jobs",
+        "evaluation_jobs",
+        "*",
+        undefined,
+        () => {
+          fetchData();
+        }
+      );
+    } catch (err) {
+      console.error("[Realtime] Failed to subscribe to evaluation_jobs:", err);
+    }
+
+    try {
+      unsubAssess = subscriptionManager.subscribe(
+        "teacher-assignment-detail-assessments",
+        "assessment_results",
+        "*",
+        undefined,
+        () => {
+          fetchData();
+        }
+      );
+    } catch (err) {
+      console.error("[Realtime] Failed to subscribe to assessment_results:", err);
+    }
+
+    return () => {
+      unsubJobs();
+      unsubAssess();
+    };
+  }, [assignmentId]);
 
   const handleEvaluate = async (submissionId: string) => {
     setEvaluating(submissionId);
@@ -287,7 +384,8 @@ export default function TeacherAssignmentDetail() {
           sample_input: sampleInput.trim() || null,
           sample_output: sampleOutput.trim() || null,
           time_limit: timeLimit,
-          memory_limit: memoryLimit
+          memory_limit: memoryLimit,
+          reference_solution: referenceSolution.trim() || null
         }, { onConflict: "assignment_id" });
 
       if (probErr) throw probErr;
@@ -296,7 +394,8 @@ export default function TeacherAssignmentDetail() {
         .from("assignments")
         .update({
           max_submissions: maxSubmissions === "Unlimited" ? null : parseInt(maxSubmissions),
-          supported_languages: supportedLanguages.length === 0 ? null : supportedLanguages
+          supported_languages: supportedLanguages.length === 0 ? null : supportedLanguages,
+          reference_solution: referenceSolution.trim() || null
         })
         .eq("id", assignmentId);
 
@@ -378,6 +477,166 @@ export default function TeacherAssignmentDetail() {
       setTestCases(prev => prev.filter(tc => tc.id !== id));
     } catch (e: any) {
       toast({ title: "Deletion Failed", description: e.message, variant: "destructive" });
+    }
+  };
+
+  // Plagiarism Comparison Handlers
+  const loadMatchCode = async (currentSub: SubmissionWithProfile, matchedSubId: string) => {
+    setComparing(true);
+    try {
+      let rightCode = "";
+      let rightLabel = "";
+
+      if (matchedSubId === "reference") {
+        rightCode = referenceSolution;
+        rightLabel = "Teacher Reference Solution";
+      } else {
+        const { data: subData, error: subErr } = await supabase
+          .from("submissions")
+          .select("code, student_id")
+          .eq("id", matchedSubId)
+          .single();
+        
+        if (subErr || !subData) {
+          throw new Error(subErr?.message || "Matched submission not found");
+        }
+
+        rightCode = subData.code || "";
+        
+        const { data: profData } = await supabase
+          .from("profiles")
+          .select("name")
+          .eq("user_id", subData.student_id)
+          .single();
+
+        rightLabel = profData?.name || `Student (${subData.student_id.slice(-8)})`;
+      }
+
+      setComparisonData(prev => {
+        if (!prev) return null;
+        return {
+          ...prev,
+          rightCode,
+          rightLabel,
+          selectedMatchId: matchedSubId
+        };
+      });
+    } catch (err: any) {
+      toast({
+        title: "Error fetching matched code",
+        description: err.message,
+        variant: "destructive"
+      });
+    } finally {
+      setComparing(false);
+    }
+  };
+
+  const handleOpenComparison = async (sub: SubmissionWithProfile, plagDetails: any) => {
+    if (!plagDetails || !plagDetails.matched_submission_ids || plagDetails.matched_submission_ids.length === 0) {
+      toast({
+        title: "No match",
+        description: "No plagiarism matches found for this submission.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const firstMatchId = plagDetails.matched_submission_ids[0];
+    setComparing(true);
+    
+    try {
+      let rightCode = "";
+      let rightLabel = "";
+
+      if (firstMatchId === "reference") {
+        rightCode = referenceSolution;
+        rightLabel = "Teacher Reference Solution";
+      } else {
+        const { data: subData, error: subErr } = await supabase
+          .from("submissions")
+          .select("code, student_id")
+          .eq("id", firstMatchId)
+          .single();
+        
+        if (subErr || !subData) {
+          throw new Error(subErr?.message || "Matched submission not found");
+        }
+
+        rightCode = subData.code || "";
+
+        const { data: profData } = await supabase
+          .from("profiles")
+          .select("name")
+          .eq("user_id", subData.student_id)
+          .single();
+
+        rightLabel = profData?.name || `Student (${subData.student_id.slice(-8)})`;
+      }
+
+      setComparisonData({
+        leftCode: sub.code || "",
+        leftLabel: `${sub.profile?.name || "Student"}'s Submission`,
+        rightCode,
+        rightLabel,
+        language: sub.language || "python",
+        explanation: plagDetails.plagiarism_explanation || "",
+        matchedSubmissionIds: plagDetails.matched_submission_ids,
+        currentSubmission: sub,
+        selectedMatchId: firstMatchId,
+      });
+      setComparisonModalOpen(true);
+    } catch (err: any) {
+      toast({
+        title: "Error loading comparison",
+        description: err.message,
+        variant: "destructive"
+      });
+    } finally {
+      setComparing(false);
+    }
+  };
+
+  const getMatchedStudentDisplayName = (plagDetails: any) => {
+    if (!plagDetails) return "—";
+    const highestScore = plagDetails.similarity_percentage || 0;
+    if (highestScore < 30) return "None";
+    
+    const firstSubId = plagDetails.matched_submission_ids?.[0];
+    if (firstSubId === "reference") {
+      return "Teacher Reference Solution";
+    }
+    
+    const firstStudentId = plagDetails.matched_student_ids?.[0];
+    if (firstStudentId) {
+      return profilesMap[firstStudentId]?.name || `Student (${firstStudentId.slice(-8)})`;
+    }
+    
+    return "None";
+  };
+
+  const renderPlagiarismRiskBadge = (similarity: number | null) => {
+    if (similarity === null || similarity === undefined) {
+      return <Badge variant="secondary" className="text-[10px]">PENDING</Badge>;
+    }
+    if (similarity < 30) {
+      return (
+        <Badge className="bg-emerald-500/10 border-emerald-500/20 text-emerald-500 hover:bg-emerald-500/10 text-[10px] capitalize">
+          LOW
+        </Badge>
+      );
+    } else if (similarity <= 70) {
+      return (
+        <Badge className="bg-amber-500/10 border-amber-500/20 text-amber-500 hover:bg-amber-500/10 text-[10px] capitalize">
+          MEDIUM
+        </Badge>
+      );
+    } else {
+      return (
+        <Badge className="bg-red-500/10 border-red-500/20 text-red-500 hover:bg-red-500/10 text-[10px] capitalize">
+          HIGH
+        </Badge>
+      );
     }
   };
 
@@ -493,6 +752,42 @@ export default function TeacherAssignmentDetail() {
     langDist[lang] = (langDist[lang] || 0) + 1;
   });
 
+  // Filter plagiarism submissions
+  const plagiarismFiltered = submissions.filter((s) => {
+    if (search) {
+      const q = search.toLowerCase();
+      const matchName = s.profile?.name?.toLowerCase().includes(q);
+      const matchUid = s.profile?.uid?.toLowerCase().includes(q);
+      const matchEmail = s.profile?.email?.toLowerCase().includes(q);
+      if (!matchName && !matchUid && !matchEmail) return false;
+    }
+    return true;
+  });
+
+  const plagiarismEvaluated = submissions.filter(s => {
+    const assess = assessments[s.id];
+    const eval_ = evaluations[s.id];
+    return !!(assess?.plagiarism_details || eval_?.plagiarism_details);
+  });
+  
+  const totalPlagAnalyzed = plagiarismEvaluated.length;
+  
+  const plagStats = plagiarismEvaluated.reduce((acc, s) => {
+    const assess = assessments[s.id];
+    const eval_ = evaluations[s.id];
+    const details = (assess?.plagiarism_details || eval_?.plagiarism_details) as any;
+    const similarity = details?.similarity_percentage || 0;
+    
+    acc.sum += similarity;
+    if (similarity > 70) acc.high++;
+    else if (similarity >= 30) acc.medium++;
+    else acc.low++;
+    
+    return acc;
+  }, { sum: 0, high: 0, medium: 0, low: 0 });
+  
+  const avgSimilarity = totalPlagAnalyzed > 0 ? Math.round(plagStats.sum / totalPlagAnalyzed) : 0;
+
   return (
     <DashboardLayout role="teacher">
       <div className="space-y-4">
@@ -546,6 +841,7 @@ export default function TeacherAssignmentDetail() {
           <TabsList className="bg-slate-100 dark:bg-[#0d1525] border border-slate-200 dark:border-white/5 p-1 rounded-lg">
             <TabsTrigger value="submissions" className="text-xs">Submissions & AI Reviews</TabsTrigger>
             <TabsTrigger value="challenge" className="text-xs">Challenge Setup</TabsTrigger>
+            <TabsTrigger value="plagiarism" className="text-xs">Plagiarism Report</TabsTrigger>
             <TabsTrigger value="analytics" className="text-xs">Analytics & Leaderboard</TabsTrigger>
           </TabsList>
 
@@ -646,7 +942,27 @@ export default function TeacherAssignmentDetail() {
                             <TableCell className="font-mono text-xs font-bold text-foreground">
                               {s.score !== null ? `${s.score}/${totalMarks}` : "—"}
                             </TableCell>
-                            <TableCell>{riskBadge(eval_?.ai_probability_score ?? null)}</TableCell>
+                            <TableCell>
+                              {assessments[s.id] ? (
+                                <div className="flex flex-col gap-0.5">
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="font-bold text-xs text-foreground">Score: {assessments[s.id].overall_score}</span>
+                                    <Badge className={`text-[9px] px-1 py-0.2 border capitalize ${
+                                      assessments[s.id].risk_level === "LOW" ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-500 hover:bg-emerald-500/10" :
+                                      assessments[s.id].risk_level === "MEDIUM" ? "bg-amber-500/10 border-amber-500/20 text-amber-500 hover:bg-amber-500/10" :
+                                      "bg-red-500/10 border-red-500/20 text-red-500 hover:bg-red-500/10"
+                                    }`}>
+                                      {assessments[s.id].risk_level}
+                                    </Badge>
+                                  </div>
+                                  <span className="text-[10px] text-muted-foreground whitespace-nowrap">
+                                    C:{assessments[s.id].correctness_score} | Q:{assessments[s.id].quality_score} | P:{assessments[s.id].plagiarism_score}
+                                  </span>
+                                </div>
+                              ) : (
+                                riskBadge(eval_?.ai_probability_score ?? null)
+                              )}
+                            </TableCell>
                             <TableCell className="text-right">
                               <div className="flex items-center gap-1.5 justify-end">
                                 <Button
@@ -672,19 +988,19 @@ export default function TeacherAssignmentDetail() {
                                     <Eye className="h-3 w-3" />
                                   </Button>
                                 )}
-                                {eval_ && (
+                                {(eval_ || assessments[s.id]) && (
                                   <Button
                                     size="sm"
                                     variant="outline"
                                     className="h-7 text-xs px-2"
-                                    onClick={() => { setSelectedEval(eval_); setDetailOpen(true); }}
+                                    onClick={() => { setSelectedEval(eval_ || { submission_id: s.id } as any); setDetailOpen(true); }}
                                   >
                                     Report
                                   </Button>
                                 )}
                                 <Button
                                   size="sm"
-                                  variant={eval_ ? "outline" : "default"}
+                                  variant={eval_ || assessments[s.id] ? "outline" : "default"}
                                   className="h-7 text-xs px-2"
                                   disabled={evaluating === s.id}
                                   onClick={() => handleEvaluate(s.id)}
@@ -831,6 +1147,19 @@ export default function TeacherAssignmentDetail() {
                         })}
                       </div>
                       <p className="text-[10px] text-muted-foreground pt-1">Select allowed languages. Leave empty to support all.</p>
+                    </div>
+
+                    <div className="space-y-2 pt-2">
+                      <Label htmlFor="reference-solution">Teacher Reference Solution</Label>
+                      <Textarea
+                        id="reference-solution"
+                        rows={8}
+                        placeholder="Enter the reference source code solution for this challenge."
+                        value={referenceSolution}
+                        onChange={(e) => setReferenceSolution(e.target.value)}
+                        className="font-mono text-xs"
+                      />
+                      <p className="text-[10px] text-muted-foreground">This solution will be compared against student submissions during plagiarism checks.</p>
                     </div>
 
                     <Button onClick={handleSaveChallenge} disabled={savingChallenge} className="w-full">
@@ -1045,6 +1374,139 @@ export default function TeacherAssignmentDetail() {
               </Card>
             </div>
           </TabsContent>
+
+          {/* TAB 4: Plagiarism Report */}
+          <TabsContent value="plagiarism" className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <Card className="glass-panel">
+                <CardHeader className="py-2.5">
+                  <CardDescription className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Total Analyzed</CardDescription>
+                </CardHeader>
+                <CardContent className="pb-3 pt-0">
+                  <div className="text-xl font-bold font-mono">{totalPlagAnalyzed} / {submissions.length}</div>
+                </CardContent>
+              </Card>
+              <Card className="glass-panel">
+                <CardHeader className="py-2.5">
+                  <CardDescription className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Avg Similarity</CardDescription>
+                </CardHeader>
+                <CardContent className="pb-3 pt-0">
+                  <div className="text-xl font-bold font-mono">{avgSimilarity}%</div>
+                </CardContent>
+              </Card>
+              <Card className="glass-panel">
+                <CardHeader className="py-2.5">
+                  <CardDescription className="text-xs font-medium uppercase tracking-wider text-muted-foreground font-semibold text-red-500">High Risk (&gt;70%)</CardDescription>
+                </CardHeader>
+                <CardContent className="pb-3 pt-0">
+                  <div className="text-xl font-bold font-mono text-red-500">{plagStats.high}</div>
+                </CardContent>
+              </Card>
+              <Card className="glass-panel">
+                <CardHeader className="py-2.5">
+                  <CardDescription className="text-xs font-medium uppercase tracking-wider text-muted-foreground font-semibold text-amber-500">Medium Risk (30-70%)</CardDescription>
+                </CardHeader>
+                <CardContent className="pb-3 pt-0">
+                  <div className="text-xl font-bold font-mono text-amber-500">{plagStats.medium}</div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Filter and Search */}
+            <div className="flex items-center gap-3 flex-wrap">
+              <div className="relative flex-1 min-w-[200px] max-w-xs">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search by UID, name, email..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="pl-9 h-9 text-sm"
+                />
+              </div>
+              <span className="text-xs text-muted-foreground ml-auto">
+                Showing {plagiarismFiltered.length} of {submissions.length}
+              </span>
+            </div>
+
+            {/* Plagiarism Report Table */}
+            <Card>
+              <CardContent className="pt-4 px-0">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="font-mono text-xs pl-4">UID</TableHead>
+                      <TableHead className="text-xs">Student</TableHead>
+                      <TableHead className="text-xs">Similarity %</TableHead>
+                      <TableHead className="text-xs font-semibold">Matched Student</TableHead>
+                      <TableHead className="text-xs">Risk</TableHead>
+                      <TableHead className="text-xs text-right pr-4">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {plagiarismFiltered.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={6} className="text-center text-muted-foreground py-12">
+                          No student submissions found.
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      plagiarismFiltered.map((s) => {
+                        const assess = assessments[s.id];
+                        const eval_ = evaluations[s.id];
+                        const plagDetails = (assess?.plagiarism_details || eval_?.plagiarism_details) as any;
+                        const similarity = plagDetails?.similarity_percentage ?? null;
+
+                        return (
+                          <TableRow key={s.id} className="hover:bg-muted/50">
+                            <TableCell className="font-mono text-xs text-primary font-medium pl-4">
+                              {s.profile?.uid || "—"}
+                            </TableCell>
+                            <TableCell className="text-sm font-medium">{s.profile?.name || "Unknown"}</TableCell>
+                            <TableCell className="font-mono text-xs font-bold">
+                              {similarity !== null ? (
+                                <div className="flex items-center gap-2 min-w-[80px]">
+                                  <span>{similarity}%</span>
+                                  <div className="w-16 h-1.5 rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden">
+                                    <div 
+                                      className={`h-full ${
+                                        similarity < 30 ? "bg-emerald-500" :
+                                        similarity <= 70 ? "bg-amber-500" :
+                                        "bg-red-500"
+                                      }`}
+                                      style={{ width: `${similarity}%` }}
+                                    />
+                                  </div>
+                                </div>
+                              ) : (
+                                <span className="text-muted-foreground text-xs font-normal">Pending</span>
+                              )}
+                            </TableCell>
+                            <TableCell className="text-sm">
+                              {getMatchedStudentDisplayName(plagDetails)}
+                            </TableCell>
+                            <TableCell>
+                              {renderPlagiarismRiskBadge(similarity)}
+                            </TableCell>
+                            <TableCell className="text-right pr-4">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-7 text-xs px-2.5"
+                                disabled={!plagDetails || !plagDetails.matched_submission_ids || plagDetails.matched_submission_ids.length === 0}
+                                onClick={() => handleOpenComparison(s, plagDetails)}
+                              >
+                                View Comparison
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })
+                    )}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          </TabsContent>
         </Tabs>
       </div>
 
@@ -1120,9 +1582,119 @@ export default function TeacherAssignmentDetail() {
         </DialogContent>
       </Dialog>
 
+      {/* Plagiarism Comparison Modal */}
+      <Dialog open={comparisonModalOpen} onOpenChange={setComparisonModalOpen}>
+        <DialogContent className="max-w-5xl w-[90vw] max-h-[90vh] overflow-hidden flex flex-col p-6 bg-slate-950 text-slate-100 border border-slate-800">
+          <DialogHeader className="pb-3 border-b border-slate-800">
+            <div className="flex items-center justify-between">
+              <div>
+                <DialogTitle className="text-lg font-bold flex items-center gap-2 text-red-500">
+                  <ShieldAlert className="h-5 w-5" />
+                  Plagiarism Comparison Analysis
+                </DialogTitle>
+                <DialogDescription className="text-slate-400 text-xs mt-1">
+                  Compare code side-by-side to review matched patterns and structural integrity.
+                </DialogDescription>
+              </div>
+            </div>
+          </DialogHeader>
+
+          {comparisonData && (
+            <div className="flex-1 flex flex-col space-y-4 overflow-hidden pt-4">
+              {/* Info & Explanation */}
+              <div className="p-4 rounded-lg bg-red-950/20 border border-red-900/30 space-y-2">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-red-400">Analysis Verdict</h4>
+                <p className="text-sm text-slate-300 font-medium font-sans">
+                  {comparisonData.explanation}
+                </p>
+                
+                {/* Select alternative match if there are multiple matches */}
+                {comparisonData.matchedSubmissionIds.length > 1 && (
+                  <div className="flex items-center gap-2 pt-2 border-t border-red-900/20 mt-2">
+                    <span className="text-xs text-slate-400 font-medium">Alternative Matches:</span>
+                    <Select
+                      value={comparisonData.selectedMatchId}
+                      onValueChange={(val) => loadMatchCode(comparisonData.currentSubmission, val)}
+                    >
+                      <SelectTrigger className="w-[280px] h-8 text-xs bg-slate-900 border-slate-800 text-slate-200">
+                        <SelectValue placeholder="Select matched source" />
+                      </SelectTrigger>
+                      <SelectContent className="bg-slate-900 border-slate-800 text-slate-200">
+                        {comparisonData.matchedSubmissionIds.map((id, index) => {
+                          let label = "";
+                          if (id === "reference") {
+                            label = "Teacher Reference Solution";
+                          } else {
+                            const assess = assessments[comparisonData.currentSubmission.id];
+                            const plagDetails = assess?.plagiarism_details as any;
+                            const matchIndex = id === plagDetails?.matched_submission_ids?.[0] ? 0 : 
+                                              plagDetails?.matched_submission_ids?.indexOf(id) ?? -1;
+                            const studentId = matchIndex >= 0 ? plagDetails?.matched_student_ids?.[matchIndex] : null;
+                            const name = studentId ? (profilesMap[studentId]?.name || `Student (${studentId.slice(-8)})`) : "Peer Submission";
+                            label = `${name} (Match #${index + 1})`;
+                          }
+                          return (
+                            <SelectItem key={id} value={id} className="text-xs focus:bg-slate-800 focus:text-slate-100">
+                              {label}
+                            </SelectItem>
+                          );
+                        })}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+              </div>
+
+              {/* Labels Header */}
+              <div className="grid grid-cols-2 gap-4 text-xs font-semibold px-2 tracking-wide uppercase text-slate-400">
+                <div className="flex items-center gap-2 border-l-2 border-primary pl-2">
+                  <span>LEFT: {comparisonData.leftLabel}</span>
+                </div>
+                <div className="flex items-center gap-2 border-l-2 border-red-500 pl-2">
+                  <span>RIGHT: {comparisonData.rightLabel}</span>
+                </div>
+              </div>
+
+              {/* Diff Editor Container */}
+              <div className="flex-1 min-h-[400px] border border-slate-800 rounded bg-slate-900 relative">
+                {comparing && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-slate-900/80 z-10">
+                    <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                  </div>
+                )}
+                <DiffEditor
+                  height="100%"
+                  original={comparisonData.leftCode}
+                  modified={comparisonData.rightCode}
+                  language={comparisonData.language}
+                  theme="vs-dark"
+                  options={{
+                    readOnly: true,
+                    originalEditable: false,
+                    renderSideBySide: true,
+                    minimap: { enabled: false },
+                    scrollBeyondLastLine: false,
+                    fontSize: 12,
+                    fontFamily: "var(--font-mono)",
+                    lineHeight: 18,
+                  }}
+                />
+              </div>
+            </div>
+          )}
+
+          <DialogFooter className="mt-4 border-t border-slate-800 pt-3 flex justify-end">
+            <Button variant="outline" size="sm" onClick={() => setComparisonModalOpen(false)} className="bg-slate-900 border-slate-800 hover:bg-slate-800 text-slate-300">
+              Close Comparison
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {selectedEval && (
         <IntegrityReport
           evaluation={selectedEval}
+          assessment={assessments[selectedEval.submission_id]}
           open={detailOpen}
           onOpenChange={setDetailOpen}
           totalMarks={totalMarks}

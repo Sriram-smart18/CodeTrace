@@ -75,6 +75,7 @@ const TeacherAssignmentDetail = withSuspense(lazy(() => import("./pages/teacher/
 const TeacherClassrooms = withSuspense(lazy(() => import("./pages/teacher/Classrooms")), "Loading teacher classrooms...");
 const TeacherClassroomDetail = withSuspense(lazy(() => import("./pages/teacher/ClassroomDetail")), "Loading classroom dashboard...");
 const TeacherReports = withSuspense(lazy(() => import("./pages/teacher/Reports")), "Running classroom analytics engine...");
+const TeacherMonitoringTest = withSuspense(lazy(() => import("./pages/teacher/MonitoringTest")), "Loading live monitoring simulator dashboard...");
 
 // Admin lazy loaded pages
 const AdminDashboard = withSuspense(lazy(() => import("./pages/admin/Dashboard")), "Loading admin panel...");
@@ -126,6 +127,7 @@ const App = () => (
               <Route path="/teacher/assignments" element={<ProtectedRoute requiredRole="teacher"><TeacherAssignments /></ProtectedRoute>} />
               <Route path="/teacher/submissions" element={<ProtectedRoute requiredRole="teacher"><TeacherSubmissions /></ProtectedRoute>} />
               <Route path="/teacher/monitoring" element={<ProtectedRoute requiredRole="teacher"><TeacherMonitoring /></ProtectedRoute>} />
+              <Route path="/teacher/monitoring-test" element={<ProtectedRoute requiredRole="teacher"><TeacherMonitoringTest /></ProtectedRoute>} />
               <Route path="/teacher/live-session/:assignmentId" element={<ProtectedRoute requiredRole="teacher"><TeacherLiveSession /></ProtectedRoute>} />
               <Route path="/teacher/assignment/:assignmentId" element={<ProtectedRoute requiredRole="teacher"><TeacherAssignmentDetail /></ProtectedRoute>} />
               <Route path="/teacher/reports" element={<ProtectedRoute requiredRole="teacher"><TeacherReports /></ProtectedRoute>} />
