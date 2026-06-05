@@ -51,7 +51,8 @@ export default function ProjectBuilder() {
           }
 
           // Fetch or create assignment project
-          const { data: project, error: projFetchErr } = await supabase
+          let project: Tables<"projects"> | null = null;
+          const { data: fetchedProject, error: projFetchErr } = await supabase
             .from("projects")
             .select("*")
             .eq("assignment_id", assignmentId)
@@ -59,6 +60,7 @@ export default function ProjectBuilder() {
             .maybeSingle();
             
           if (projFetchErr) throw projFetchErr;
+          project = fetchedProject;
 
           let currentProjectId = project?.id;
           let filesList: Tables<"project_files">[] = [];
@@ -125,7 +127,8 @@ export default function ProjectBuilder() {
         } else {
           console.log('[SANDBOX MODE] PRACTICE');
           
-          const { data: project, error: projFetchErr } = await supabase
+          let project: Tables<"projects"> | null = null;
+          const { data: fetchedProject, error: projFetchErr } = await supabase
             .from("projects")
             .select("*")
             .eq("name", "Personal Sandbox Workspace")
@@ -134,6 +137,7 @@ export default function ProjectBuilder() {
             .maybeSingle();
             
           if (projFetchErr) throw projFetchErr;
+          project = fetchedProject;
 
           let currentProjectId = project?.id;
           let filesList: Tables<"project_files">[] = [];
