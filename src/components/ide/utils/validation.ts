@@ -15,7 +15,7 @@ export function validateFileName(name: string): string | null {
     return `"${trimmed}" is a reserved system name.`;
   }
 
-  const invalidChars = /[\/:*?"<>|]/;
+  const invalidChars = /[/:*?"<>|]/;
   if (invalidChars.test(trimmed)) {
     return "File name cannot contain invalid characters: \\ / : * ? \" < > |";
   }

@@ -1,5 +1,6 @@
-import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useInfiniteQuery, useMutation, useQueryClient, InfiniteData } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import type { Tables, Json } from "@/integrations/supabase/types";
 
 // Types matching custom definitions
 export interface ClassroomPerformance {
@@ -24,7 +25,7 @@ export interface ActivitySnapshot {
   classroom_id: string | null;
   student_id: string | null;
   snapshot_type: "classroom_weekly" | "student_daily" | "platform_daily";
-  metrics: any;
+  metrics: Json;
   created_at: string;
 }
 
@@ -39,7 +40,7 @@ export interface ReportItem {
   submitted_at: string;
   plagiarism_score: number | null;
   risk_level: string;
-  behavioral_summary: any;
+  behavioral_summary: Json;
 }
 
 export interface LiveSessionInfo {
@@ -327,24 +328,27 @@ export function useLiveMonitoringQuery(teacherId: string | undefined, classroomI
 
       const assignmentMap = new Map(assignments?.map((a) => [a.id, a.title] as [string, string]));
 
-      return sessions.map((s: any) => {
+      return (sessions as (Tables<"monitoring_sessions"> & {
+        classrooms: { classroom_name: string } | { classroom_name: string }[] | null;
+      })[]).map((s) => {
         const student = profileMap.get(s.user_id);
+        const classroomsObj = Array.isArray(s.classrooms) ? s.classrooms[0] : s.classrooms;
         return {
           id: s.id,
           user_id: s.user_id,
           student_name: student?.name || "Unknown Student",
           student_uid: student?.uid || "—",
           classroom_id: s.classroom_id,
-          classroom_name: s.classrooms?.classroom_name || "Unknown",
+          classroom_name: classroomsObj?.classroom_name || "Unknown",
           assignment_id: s.assignment_id,
           assignment_title: assignmentMap.get(s.assignment_id || "") || "Legacy Assignment",
-          status: s.status,
+          status: s.status as "active" | "idle" | "abnormal",
           current_file: s.current_file,
           language: s.language,
-          editor_focus: s.editor_focus,
-          tab_switch_count: s.tab_switch_count,
-          copy_paste_count: s.copy_paste_count,
-          abnormal_typing_spikes: s.abnormal_typing_spikes,
+          editor_focus: s.editor_focus || false,
+          tab_switch_count: s.tab_switch_count || 0,
+          copy_paste_count: s.copy_paste_count || 0,
+          abnormal_typing_spikes: s.abnormal_typing_spikes || 0,
           last_heartbeat: s.last_heartbeat,
         };
       });
@@ -491,13 +495,13 @@ export function useMarkNotificationReadMutation() {
       const previousPages = queryClient.getQueryData(["notification-events"]);
 
       // Optimistically update notifications
-      queryClient.setQueriesData({ queryKey: ["notification-events"] }, (old: any) => {
+      queryClient.setQueriesData({ queryKey: ["notification-events"] }, (old: InfiniteData<{ data: Tables<"notification_events">[]; nextCursor: number | null }> | undefined) => {
         if (!old) return old;
         return {
           ...old,
-          pages: old.pages.map((page: any) => ({
+          pages: old.pages.map((page) => ({
             ...page,
-            data: page.data.map((item: any) =>
+            data: page.data.map((item) =>
               item.id === eventId ? { ...item, read: true } : item
             ),
           })),
@@ -533,13 +537,13 @@ export function useMarkAllNotificationsReadMutation() {
       await queryClient.cancelQueries({ queryKey: ["notification-events"] });
       const previousPages = queryClient.getQueryData(["notification-events"]);
 
-      queryClient.setQueriesData({ queryKey: ["notification-events"] }, (old: any) => {
+      queryClient.setQueriesData({ queryKey: ["notification-events"] }, (old: InfiniteData<{ data: Tables<"notification_events">[]; nextCursor: number | null }> | undefined) => {
         if (!old) return old;
         return {
           ...old,
-          pages: old.pages.map((page: any) => ({
+          pages: old.pages.map((page) => ({
             ...page,
-            data: page.data.map((item: any) => ({ ...item, read: true })),
+            data: page.data.map((item) => ({ ...item, read: true })),
           })),
         };
       });

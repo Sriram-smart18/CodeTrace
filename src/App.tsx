@@ -12,6 +12,8 @@ import { Loader2 } from "lucide-react";
 import { GlobalErrorBoundary } from "@/components/GlobalErrorBoundary";
 import { IdeDiagnosticsPanel } from "@/components/ide/diagnostics/IdeDiagnosticsPanel";
 import { ThemeProvider } from "next-themes";
+import { PwaUpdater } from "@/components/pwa/PwaUpdater";
+import { OfflineOverlay } from "@/components/pwa/OfflineOverlay";
 
 if (import.meta.env.DEV || import.meta.env.VITE_ENABLE_STRESS_TESTS === 'true') {
   import("@/utils/stressTestMode").then(m => m.stressTestEngine);
@@ -42,8 +44,8 @@ const RouteLoader = ({ message = "Loading component..." }: { message?: string })
 );
 
 // HOC to wrap component in suspense
-const withSuspense = (Component: React.ComponentType<any>, message?: string) => {
-  return (props: any) => (
+const withSuspense = <P extends object>(Component: React.ComponentType<P>, message?: string) => {
+  return (props: P) => (
     <Suspense fallback={<RouteLoader message={message} />}>
       <Component {...props} />
     </Suspense>
@@ -94,6 +96,8 @@ const App = () => (
         <TooltipProvider>
           <Toaster />
           <Sonner />
+          <PwaUpdater />
+          <OfflineOverlay />
           <IdeDiagnosticsPanel />
           <BrowserRouter>
           <AuthProvider>

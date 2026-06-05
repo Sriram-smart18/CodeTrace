@@ -76,6 +76,8 @@ console.log("Go path:", getExecutablePath('go'));
 
 const sessions = new Map();
 const rateLimits = new Map(); // identifier -> { userId, timestamp, count }
+let activeExecutionsCount = 0;
+const MAX_CONCURRENT_RUNS = parseInt(process.env.MAX_CONCURRENT_RUNS) || 15;
 
 const ALLOWED_LANGUAGES = ['javascript', 'python', 'java', 'c', 'cpp', 'go', 'html'];
 
@@ -216,6 +218,11 @@ const cleanupSession = (sessionId) => {
 
   logSession(sessionId, 'Cleaning up session');
 
+  if (session.active) {
+    activeExecutionsCount = Math.max(0, activeExecutionsCount - 1);
+    session.active = false;
+  }
+
   if (session.process && !session.process.killed) {
     try {
       if (process.platform === 'win32') {
@@ -223,7 +230,11 @@ const cleanupSession = (sessionId) => {
           if (err) logSession(sessionId, `taskkill error: ${err.message}`);
         });
       } else {
-        session.process.kill('SIGKILL');
+        try {
+          process.kill(-session.process.pid, 'SIGKILL');
+        } catch (killErr) {
+          session.process.kill('SIGKILL');
+        }
       }
     } catch (e) {
       logSession(sessionId, `Process kill error: ${e.message}`);
@@ -263,8 +274,77 @@ const emitStatus = (sessionId, status) => {
 
 // ─── Socket.IO handlers ───────────────────────────────────────────────────────
 
+// Token verification helper using Supabase auth endpoint
+const verifyToken = async (token) => {
+  try {
+    const supabaseUrl = process.env.VITE_SUPABASE_URL;
+    const anonKey = process.env.VITE_SUPABASE_ANON_KEY;
+    if (!supabaseUrl || !anonKey) {
+      console.error('[SOCKET AUTH] Missing Supabase environment configuration');
+      return null;
+    }
+    const response = await fetch(`${supabaseUrl}/auth/v1/user`, {
+      headers: {
+        'apikey': anonKey,
+        'Authorization': `Bearer ${token}`
+      }
+    });
+    if (!response.ok) {
+      console.error(`[SOCKET AUTH] Auth endpoint responded with status ${response.status}`);
+      return null;
+    }
+    const user = await response.json();
+    return user;
+  } catch (err) {
+    console.error('[SOCKET AUTH] Token verification exception:', err);
+    return null;
+  }
+};
+
+// Check if user has permission to the assignment using Supabase RLS
+const checkAssignmentPermission = async (token, assignmentId) => {
+  try {
+    const supabaseUrl = process.env.VITE_SUPABASE_URL;
+    const anonKey = process.env.VITE_SUPABASE_ANON_KEY;
+    if (!supabaseUrl || !anonKey) return false;
+    
+    const response = await fetch(`${supabaseUrl}/rest/v1/assignments?id=eq.${assignmentId}&select=id`, {
+      headers: {
+        'apikey': anonKey,
+        'Authorization': `Bearer ${token}`
+      }
+    });
+    if (!response.ok) return false;
+    const list = await response.json();
+    return list.length > 0;
+  } catch (err) {
+    console.error('[SOCKET AUTH] Assignment permission check exception:', err);
+    return false;
+  }
+};
+
+// Socket.IO Authentication Middleware
+io.use(async (socket, next) => {
+  const token = socket.handshake.auth?.token;
+  if (!token) {
+    console.error('[SOCKET AUTH] Connection rejected: Missing token');
+    return next(new Error('Authentication token required'));
+  }
+  
+  const user = await verifyToken(token);
+  if (!user) {
+    console.error('[SOCKET AUTH] Connection rejected: Invalid token');
+    return next(new Error('Invalid authentication token'));
+  }
+
+  socket.userId = user.id;
+  socket.token = token;
+  console.log(`[SOCKET AUTH] Socket connection authenticated for user: ${user.id}`);
+  next();
+});
+
 io.on('connection', (socket) => {
-  console.log(`[SOCKET CONNECT] Client connected: ${socket.id}`);
+  console.log(`[SOCKET CONNECT] Client connected: ${socket.id} (user: ${socket.userId})`);
 
   socket.on('join_session', (sessionId) => {
     socket.join(sessionId);
@@ -279,8 +359,16 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Live monitoring room joining
-  socket.on('join_room', (roomId) => {
+  // Live monitoring room joining with authorization check
+  socket.on('join_room', async (roomId) => {
+    const assignmentId = roomId.replace('room_', '');
+    const hasAccess = await checkAssignmentPermission(socket.token, assignmentId);
+    if (!hasAccess) {
+      console.warn(`[SOCKET AUTH] User ${socket.userId} denied access to join room: ${roomId}`);
+      socket.emit('error', 'Unauthorized to join room');
+      return;
+    }
+
     socket.join(roomId);
     console.log(`[SOCKET ROOM JOIN] Client ${socket.id} joined room: ${roomId}`);
   });
@@ -291,10 +379,13 @@ io.on('connection', (socket) => {
     console.log(`[SOCKET ROOM LEAVE] Client ${socket.id} left room: ${roomId}`);
   });
 
-  // Relay code updates from student to teacher
+  // Relay code updates from student to teacher (preventing spoofing)
   socket.on('code_update', ({ roomId, code, language, studentId }) => {
+    if (studentId !== socket.userId) {
+      console.warn(`[SOCKET AUTH] Blocked spoofed code_update: ${socket.userId} tried to act as ${studentId}`);
+      return;
+    }
     console.log(`[SERVER_EVENT_RECEIVED] code_update from student: ${studentId}`);
-    // Relay to other clients (e.g. the teacher dashboard)
     socket.to(roomId).emit('code_update', { roomId, code, language, studentId });
   });
 
@@ -304,12 +395,15 @@ io.on('connection', (socket) => {
     socket.to(roomId).emit('request_code', { roomId, studentId });
   });
 
-  // Handle student activity event emissions
+  // Handle student activity event emissions (preventing spoofing)
   socket.on('student_activity', (data) => {
     const { eventType, studentId, assignmentId } = data;
+    if (studentId !== socket.userId) {
+      console.warn(`[SOCKET AUTH] Blocked spoofed student_activity: ${socket.userId} tried to act as ${studentId}`);
+      return;
+    }
     console.log(`[SERVER_EVENT_RECEIVED] ${eventType} from student: ${studentId}`);
     
-    // Relay to everyone in the room (such as the teacher dashboard)
     const roomId = `room_${assignmentId}`;
     socket.to(roomId).emit('student_activity', data);
   });
@@ -325,6 +419,12 @@ io.on('connection', (socket) => {
     console.log(`[SERVER_EVENT_RECEIVED] run from student: ${userId || 'anonymous'}`);
     if (!sessionId) return;
     
+    // Prevent studentId spoofing
+    if (userId && userId !== socket.userId) {
+      socket.emit('output', `\r\n\x1b[31m[Security Error: Student ID mismatch]\x1b[0m\r\n`);
+      return;
+    }
+
     // Strict UUID format validation to prevent path traversals
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     if (!uuidRegex.test(sessionId)) {
@@ -333,7 +433,7 @@ io.on('connection', (socket) => {
     }
 
     socket.join(sessionId);
-    logSession(sessionId, `RUN: ${language} (User ID: ${userId || 'anonymous'})`);
+    logSession(sessionId, `RUN: ${language} (User ID: ${socket.userId})`);
 
     cleanupSession(sessionId);
 
@@ -351,6 +451,12 @@ io.on('connection', (socket) => {
       return;
     }
 
+    // Capping active execution limit
+    if (activeExecutionsCount >= MAX_CONCURRENT_RUNS) {
+      io.to(sessionId).emit('output', `\r\n\x1b[31m[Server Busy: Concurrent execution limit of ${MAX_CONCURRENT_RUNS} reached. Please try again in a moment.]\x1b[0m\r\n`);
+      return;
+    }
+
     // Create isolated session directory
     const sessionDir = path.join(TEMP_DIR, sessionId);
     if (!fs.existsSync(sessionDir)) fs.mkdirSync(sessionDir, { recursive: true });
@@ -358,6 +464,22 @@ io.on('connection', (socket) => {
     const fileName = `prog_${uuidv4()}${getExtension(language)}`;
     const filePath = path.join(sessionDir, fileName);
     fs.writeFileSync(filePath, code);
+
+    // Initialize session placeholder and increment counter
+    const session = {
+      process: null,
+      sessionDir,
+      outputBytes: 0,
+      status: 'compiling',
+      wallTimeout: null,
+      idleTimeout: null,
+      waitingInputTimer: null,
+      monitorInterval: null,
+      disconnectTimer: null,
+      active: true,
+    };
+    sessions.set(sessionId, session);
+    activeExecutionsCount++;
 
     const startTime = Date.now();
     recordExecutionStart(false, language);
@@ -407,20 +529,11 @@ io.on('connection', (socket) => {
     const proc = spawn(execConfig.cmd, execConfig.args, {
       stdio: ['pipe', 'pipe', 'pipe'],
       cwd: sessionDir,
+      detached: process.platform !== 'win32',
     });
 
-    const session = {
-      process: proc,
-      sessionDir,
-      outputBytes: 0,
-      status: 'running',
-      wallTimeout: null,
-      idleTimeout: null,
-      waitingInputTimer: null,
-      monitorInterval: null,
-      disconnectTimer: null,
-    };
-    sessions.set(sessionId, session);
+    session.process = proc;
+    session.status = 'running';
     emitStatus(sessionId, 'running');
 
     // Configurable Wall Clock Timeout (e.g. 30s)
@@ -589,6 +702,12 @@ app.post('/execute', restLimiter, async (req, res) => {
     return res.status(400).json({ error: `Unsupported language: ${language}` });
   }
 
+  // Capping active execution limit
+  if (activeExecutionsCount >= MAX_CONCURRENT_RUNS) {
+    return res.status(503).json({ error: "Server Busy: Concurrent execution limit reached. Try again in a moment." });
+  }
+
+  activeExecutionsCount++;
   const sessionId = uuidv4();
   const sessionDir = path.join(TEMP_DIR, sessionId);
   
@@ -641,6 +760,7 @@ app.post('/execute', restLimiter, async (req, res) => {
     const proc = spawn(execConfig.cmd, execConfig.args, {
       stdio: ['pipe', 'pipe', 'pipe'],
       cwd: sessionDir,
+      detached: process.platform !== 'win32',
     });
 
     let output = '';
@@ -659,10 +779,16 @@ app.post('/execute', restLimiter, async (req, res) => {
           if (process.platform === 'win32') {
             execSync(`taskkill /pid ${proc.pid} /t /f`);
           } else {
-            proc.kill('SIGKILL');
+            try {
+              process.kill(-proc.pid, 'SIGKILL');
+            } catch (killErr) {
+              proc.kill('SIGKILL');
+            }
           }
         } catch (e) {
-          // ignore
+          try {
+            proc.kill('SIGKILL');
+          } catch (err) { /* ignore */ }
         }
       }
     };
@@ -763,6 +889,7 @@ app.post('/execute', restLimiter, async (req, res) => {
     console.error("Express execute error:", err);
     return res.status(500).json({ error: "Internal execution server error: " + err.message });
   } finally {
+    activeExecutionsCount = Math.max(0, activeExecutionsCount - 1);
     // Purge temp directory safely in background
     setTimeout(() => {
       try {

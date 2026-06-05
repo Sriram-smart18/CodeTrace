@@ -3,6 +3,11 @@ import { useRef, useCallback } from "react";
 export interface BehavioralSummary {
   paste_count: number;
   largest_paste_size: number;
+  total_pasted_chars: number;
+  total_pasted_lines: number;
+  largest_paste_lines: number;
+  first_paste_time: string | null;
+  last_paste_time: string | null;
   total_typing_time: number;      // seconds
   idle_time: number;              // seconds
   typing_speed_estimate: number;  // chars per minute
@@ -29,6 +34,12 @@ export function useBehavioralLogger() {
   // Accumulators
   const pasteCount = useRef<number>(0);
   const largestPasteSize = useRef<number>(0);
+  const totalPastedChars = useRef<number>(0);
+  const totalPastedLines = useRef<number>(0);
+  const largestPasteLines = useRef<number>(0);
+  const firstPasteTime = useRef<string | null>(null);
+  const lastPasteTime = useRef<string | null>(null);
+
   const totalTypingMs = useRef<number>(0);
   const totalIdleMs = useRef<number>(0);
   const deletionCount = useRef<number>(0);
@@ -36,8 +47,6 @@ export function useBehavioralLogger() {
 
   // Idle detection: if gap between edits > IDLE_THRESHOLD, count as idle
   const IDLE_THRESHOLD_MS = 10_000; // 10 seconds
-  // Paste detection: if single delta > PASTE_THRESHOLD chars, treat as paste
-  const PASTE_THRESHOLD = 50;
 
   const logChange = useCallback((newCode: string, prevCode: string) => {
     const now = Date.now();
@@ -54,13 +63,9 @@ export function useBehavioralLogger() {
     prevChangeTime.current = now;
 
     if (delta > 0) {
-      // Insertion
-      if (delta > PASTE_THRESHOLD) {
-        pasteCount.current += 1;
-        if (delta > largestPasteSize.current) {
-          largestPasteSize.current = delta;
-        }
-      } else {
+      // Normal typed insertions (large bulk inserts are tracked via logPaste)
+      // Exclude large changes (delta > 10) from typed characters so paste events do not inflate typing speed.
+      if (delta <= 10) {
         totalCharsTyped.current += delta;
       }
     } else if (delta < 0) {
@@ -69,6 +74,26 @@ export function useBehavioralLogger() {
     }
 
     prevCodeLen.current = newCode.length;
+  }, []);
+
+  const logPaste = useCallback((chars: number, lines: number) => {
+    const nowStr = new Date().toISOString();
+    
+    pasteCount.current += 1;
+    totalPastedChars.current += chars;
+    totalPastedLines.current += lines;
+    
+    if (chars > largestPasteSize.current) {
+      largestPasteSize.current = chars;
+    }
+    if (lines > largestPasteLines.current) {
+      largestPasteLines.current = lines;
+    }
+    
+    if (!firstPasteTime.current) {
+      firstPasteTime.current = nowStr;
+    }
+    lastPasteTime.current = nowStr;
   }, []);
 
   const getBehavioralSummary = useCallback((): BehavioralSummary => {
@@ -87,6 +112,11 @@ export function useBehavioralLogger() {
     return {
       paste_count: pasteCount.current,
       largest_paste_size: largestPasteSize.current,
+      total_pasted_chars: totalPastedChars.current,
+      total_pasted_lines: totalPastedLines.current,
+      largest_paste_lines: largestPasteLines.current,
+      first_paste_time: firstPasteTime.current,
+      last_paste_time: lastPasteTime.current,
       total_typing_time: typingTimeSec,
       idle_time: idleTimeSec,
       typing_speed_estimate: typingSpeedEstimate,
@@ -100,13 +130,20 @@ export function useBehavioralLogger() {
     mountTime.current = Date.now();
     prevChangeTime.current = Date.now();
     prevCodeLen.current = 0;
+    
     pasteCount.current = 0;
     largestPasteSize.current = 0;
+    totalPastedChars.current = 0;
+    totalPastedLines.current = 0;
+    largestPasteLines.current = 0;
+    firstPasteTime.current = null;
+    lastPasteTime.current = null;
+    
     totalTypingMs.current = 0;
     totalIdleMs.current = 0;
     deletionCount.current = 0;
     totalCharsTyped.current = 0;
   }, []);
 
-  return { logChange, getBehavioralSummary, resetLogger };
+  return { logChange, logPaste, getBehavioralSummary, resetLogger };
 }

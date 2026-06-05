@@ -1,0 +1,82 @@
+File: C:\Users\patar\OneDrive\Desktop\Tracecode\src\components\NotificationCenter.tsx
+  Line 40:10 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 41:25 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 162:42 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+
+File: C:\Users\patar\OneDrive\Desktop\Tracecode\src\hooks\useActivityTracker.ts
+
+File: C:\Users\patar\OneDrive\Desktop\Tracecode\src\hooks\useAnalyticsQueries.ts
+  Line 27:12 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 42:23 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 330:31 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 494:79 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 498:39 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 500:40 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 536:79 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 540:39 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 542:40 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+
+File: C:\Users\patar\OneDrive\Desktop\Tracecode\src\hooks\useBehavioralLogger.ts
+
+File: C:\Users\patar\OneDrive\Desktop\Tracecode\src\integrations\supabase\types.ts
+  Line 240:6 - [null] Parsing error: Type expected.
+
+File: C:\Users\patar\OneDrive\Desktop\Tracecode\src\pages\admin\Dashboard.tsx
+  Line 17:16 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+
+File: C:\Users\patar\OneDrive\Desktop\Tracecode\src\pages\student\Dashboard.tsx
+  Line 59:48 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 61:50 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 62:54 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 896:108 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 940:79 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 953:74 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+
+File: C:\Users\patar\OneDrive\Desktop\Tracecode\src\pages\teacher\AssignmentDetail.tsx
+  Line 76:46 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 99:46 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 130:24 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 135:32 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 136:51 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 146:27 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 147:51 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 160:40 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 161:29 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 164:37 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 173:25 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 179:30 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 326:17 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 407:17 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 423:33 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 469:17 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 480:17 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 526:19 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 537:80 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 591:19 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 602:54 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 780:82 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 998:106 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 1458:106 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 1631:79 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+
+File: C:\Users\patar\OneDrive\Desktop\Tracecode\src\pages\teacher\Dashboard.tsx
+
+File: C:\Users\patar\OneDrive\Desktop\Tracecode\src\pages\teacher\LiveSession.tsx
+
+File: C:\Users\patar\OneDrive\Desktop\Tracecode\src\pages\teacher\Monitoring.tsx
+  Line 79:52 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 101:30 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 108:27 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 136:61 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+
+File: C:\Users\patar\OneDrive\Desktop\Tracecode\supabase\functions\check-plagiarism\index.ts
+  Line 1:1 - [@typescript-eslint/ban-ts-comment] Do not use "@ts-nocheck" because it alters compilation errors.
+  Line 167:81 - [no-useless-escape] Unnecessary escape character: \[.
+
+File: C:\Users\patar\OneDrive\Desktop\Tracecode\supabase\functions\detect-fraud\index.ts
+  Line 1:1 - [@typescript-eslint/ban-ts-comment] Do not use "@ts-nocheck" because it alters compilation errors.
+
+File: C:\Users\patar\OneDrive\Desktop\Tracecode\supabase\functions\evaluate-submission\index.ts
+  Line 1:1 - [@typescript-eslint/ban-ts-comment] Do not use "@ts-nocheck" because it alters compilation errors.
+  Line 140:32 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+

@@ -29,6 +29,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import type { Tables } from "@/integrations/supabase/types";
 
 import { useAuth } from "@/contexts/AuthContext";
 import { useEditorPersistence } from "@/hooks/useEditorPersistence";
@@ -82,7 +83,7 @@ export const SandboxWorkspace: React.FC<SandboxWorkspaceProps> = ({
   console.log('[IDE MODE] SANDBOX');
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { user } = useAuth();
+  const { user, session } = useAuth();
   
   const { healthState, isOffline, isRecovering } = useIdeHealth();
 
@@ -156,7 +157,7 @@ export const SandboxWorkspace: React.FC<SandboxWorkspaceProps> = ({
         description: "Previous editor session and file tree recovered successfully.",
       });
     }
-  }, [hydrationCompleted]);
+  }, [hydrationCompleted, toast]);
 
   // Local IDE Execution States
   const terminalRef = useRef<IdeTerminalRef>(null);
@@ -164,8 +165,8 @@ export const SandboxWorkspace: React.FC<SandboxWorkspaceProps> = ({
   const currentSessionIdRef = useRef<string | null>(null);
   
   const [execMode, setExecMode] = useState<"normal" | "interactive">("normal");
-  const [assignment, setAssignment] = useState<any>(null);
-  const [submission, setSubmission] = useState<any>(null);
+  const [assignment, setAssignment] = useState<Tables<"assignments"> | null>(null);
+  const [submission, setSubmission] = useState<Tables<"submissions"> | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [isLocked, setIsLocked] = useState(false);
 
@@ -199,7 +200,7 @@ export const SandboxWorkspace: React.FC<SandboxWorkspaceProps> = ({
     };
     window.addEventListener("run-code-file", handleRerunEvent);
     return () => window.removeEventListener("run-code-file", handleRerunEvent);
-  }, [activeFileId]);
+  }, [activeFileId, handleRunCode]);
 
   // Sync mode layout state on change
   useEffect(() => {
@@ -277,7 +278,7 @@ export const SandboxWorkspace: React.FC<SandboxWorkspaceProps> = ({
   };
 
   // Code Execution Logic (using Socket.IO endpoint)
-  const handleRunCode = async () => {
+  const handleRunCode = useCallback(async () => {
     if (!activeFileId || execState === 'running') {
       if (!activeFileId) toast({ title: "No File Focused", description: "Select a script file in explorer sidebar to execute.", variant: "destructive" });
       return;
@@ -324,7 +325,11 @@ export const SandboxWorkspace: React.FC<SandboxWorkspaceProps> = ({
       const sessionId = crypto.randomUUID();
       currentSessionIdRef.current = sessionId;
 
-      const socket = io(EXECUTION_SERVER_URL);
+      const socket = io(EXECUTION_SERVER_URL, {
+        auth: {
+          token: session?.access_token
+        }
+      });
       socketRef.current = socket;
 
       socket.on("connect", () => {
@@ -393,10 +398,10 @@ export const SandboxWorkspace: React.FC<SandboxWorkspaceProps> = ({
         socketRef.current = null;
       });
 
-    } catch (err: any) {
+    } catch (err) {
       const duration = Date.now() - startTime;
       if (terminalRef.current) {
-        terminalRef.current.write(`\r\n\x1b[31m[Error: ${err.message}]\x1b[0m\r\n`);
+        terminalRef.current.write(`\r\n\x1b[31m[Error: ${err instanceof Error ? err.message : String(err)}]\x1b[0m\r\n`);
       }
       setExecState('error');
       
@@ -412,7 +417,7 @@ export const SandboxWorkspace: React.FC<SandboxWorkspaceProps> = ({
         });
       }
     }
-  };
+  }, [activeFileId, execState, toast, saveToSupabase, session, user, setExecState, setIdeMode]);
 
   const handleTerminalInput = (data: string) => {
     setExecState('running');
@@ -487,8 +492,8 @@ export const SandboxWorkspace: React.FC<SandboxWorkspaceProps> = ({
         if (data) setSubmission(data);
         toast({ title: "Code Submitted!", description: "Successfully submitted project files for grading." });
       }
-    } catch (e: any) {
-      toast({ title: "Submission Failed", description: e.message, variant: "destructive" });
+    } catch (e) {
+      toast({ title: "Submission Failed", description: e instanceof Error ? e.message : String(e), variant: "destructive" });
     } finally {
       setSubmitting(false);
     }

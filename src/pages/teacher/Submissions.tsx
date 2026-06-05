@@ -11,9 +11,33 @@ import { useToast } from "@/hooks/use-toast";
 import { IntegrityReport, type IntegrityEvaluation } from "@/components/IntegrityReport";
 import { aiQueueService } from "@/lib/aiQueueService";
 import { subscriptionManager } from "@/lib/subscriptionManager";
-import { type AssessmentResult } from "@/integrations/supabase/types";
+import { type AssessmentResult, type Tables } from "@/integrations/supabase/types";
+
+interface QualityDetails {
+  readability?: number;
+  naming?: number;
+  modularity?: number;
+  complexity?: number;
+  feedback?: string;
+  strengths?: string[];
+  improvements?: string[];
+}
+
+interface PlagiarismDetails {
+  ast_similarity?: number;
+  token_similarity?: number;
+  levenshtein_distance?: number;
+  winnowing_similarity?: number;
+  plagiarism_explanation?: string | null;
+}
+
+interface SubmissionWithAssignment extends Tables<"submissions"> {
+  assignments: { title: string; total_marks: number | null } | null;
+}
 
 const createFallbackEvaluation = (submissionId: string, assessment?: AssessmentResult | null): IntegrityEvaluation => {
+  const qDetails = (assessment?.quality_details as unknown as QualityDetails) || {};
+  const pDetails = (assessment?.plagiarism_details as unknown as PlagiarismDetails) || {};
   return {
     id: assessment?.id || Math.random().toString(36).substring(2, 15),
     submission_id: submissionId,
@@ -22,13 +46,13 @@ const createFallbackEvaluation = (submissionId: string, assessment?: AssessmentR
     plagiarism_score: assessment ? (100 - assessment.plagiarism_score) : null,
     ai_probability_score: null,
     total_score: assessment?.overall_score ?? null,
-    feedback: (assessment?.quality_details as any)?.feedback || "Evaluation completed.",
+    feedback: qDetails.feedback || "Evaluation completed.",
     detailed_report: {
-      strengths: (assessment?.quality_details as any)?.strengths || [],
-      improvements: (assessment?.quality_details as any)?.improvements || [],
+      strengths: qDetails.strengths || [],
+      improvements: qDetails.improvements || [],
     },
     risk_level: assessment?.risk_level || "low",
-    integrity_verdict: (assessment?.plagiarism_details as any)?.plagiarism_explanation || null,
+    integrity_verdict: pDetails.plagiarism_explanation || null,
     suspicious_segments: null,
     ai_indicators: null,
     plagiarism_indicators: null,
@@ -39,13 +63,13 @@ const createFallbackEvaluation = (submissionId: string, assessment?: AssessmentR
     behavioral_log: null,
     peer_similarity_scores: null,
     highest_peer_similarity: assessment?.plagiarism_score ?? null,
-    peer_ai_verdict: (assessment?.plagiarism_details as any)?.plagiarism_explanation || null,
+    peer_ai_verdict: pDetails.plagiarism_explanation || null,
     evaluated_at: assessment?.created_at || new Date().toISOString(),
   };
 };
 
 export default function TeacherSubmissions() {
-  const [submissions, setSubmissions] = useState<any[]>([]);
+  const [submissions, setSubmissions] = useState<SubmissionWithAssignment[]>([]);
   const [evaluations, setEvaluations] = useState<Record<string, IntegrityEvaluation>>({});
   const [assessments, setAssessments] = useState<Record<string, AssessmentResult>>({});
   const [evaluating, setEvaluating] = useState<string | null>(null);
@@ -60,7 +84,7 @@ export default function TeacherSubmissions() {
       .select("id")
       .eq("created_by", (await supabase.auth.getUser()).data.user?.id || "");
     
-    const assignmentIds = myAssignments?.map((a: any) => a.id) || [];
+    const assignmentIds = myAssignments?.map((a) => a.id) || [];
     
     if (assignmentIds.length === 0) {
       setSubmissions([]);
@@ -72,9 +96,9 @@ export default function TeacherSubmissions() {
       .select("*, assignments(title, total_marks)")
       .in("assignment_id", assignmentIds)
       .order("submitted_at", { ascending: false });
-    if (subs) setSubmissions(subs);
+    if (subs) setSubmissions(subs as SubmissionWithAssignment[]);
 
-    const subIds = subs?.map((s: any) => s.id) || [];
+    const subIds = subs?.map((s) => s.id) || [];
     if (subIds.length > 0) {
       const { data: evals } = await supabase
         .from("ai_evaluations")
@@ -82,7 +106,7 @@ export default function TeacherSubmissions() {
         .in("submission_id", subIds);
       if (evals) {
         const map: Record<string, IntegrityEvaluation> = {};
-        evals.forEach((e: any) => { map[e.submission_id] = e; });
+        evals.forEach((e) => { map[e.submission_id] = e; });
         setEvaluations(map);
       }
 
@@ -92,7 +116,7 @@ export default function TeacherSubmissions() {
         .in("submission_id", subIds);
       if (assessList) {
         const map: Record<string, AssessmentResult> = {};
-        assessList.forEach((a: any) => { map[a.submission_id] = a; });
+        assessList.forEach((a) => { map[a.submission_id] = a; });
         setAssessments(map);
       }
     }
@@ -155,10 +179,10 @@ export default function TeacherSubmissions() {
         description: "The submission has been queued for background AI evaluation.",
       });
       await fetchData();
-    } catch (error: any) {
+    } catch (error) {
       toast({
         title: "Failed to queue evaluation",
-        description: error.message || "An error occurred",
+        description: error instanceof Error ? error.message : String(error),
         variant: "destructive",
       });
     } finally {

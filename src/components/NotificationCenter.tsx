@@ -35,10 +35,11 @@ import {
 import { subscriptionManager } from "@/lib/subscriptionManager";
 import { useQueryClient } from "@tanstack/react-query";
 import { List } from "react-window";
+import type { Tables } from "@/integrations/supabase/types";
 
 interface NotificationRowExtraProps {
-  items: any[];
-  handleNotifClick: (n: any) => void;
+  items: Tables<"notification_events">[];
+  handleNotifClick: (n: Tables<"notification_events">) => void;
   getNotifIcon: (t: string) => React.ReactNode;
 }
 
@@ -159,7 +160,7 @@ export function NotificationCenter() {
   };
 
   // Click handler
-  const handleNotifClick = async (notif: any) => {
+  const handleNotifClick = async (notif: Tables<"notification_events">) => {
     setIsOpen(false);
 
     if (!notif.read) {
@@ -167,7 +168,7 @@ export function NotificationCenter() {
     }
 
     // Direct routing support based on payloads
-    const payload = notif.payload || {};
+    const payload = (notif.payload as { assignment_id?: string; classroom_id?: string }) || {};
     if (payload.assignment_id) {
       if (user?.email?.includes("teacher")) {
         navigate(`/teacher/assignment/${payload.assignment_id}`);

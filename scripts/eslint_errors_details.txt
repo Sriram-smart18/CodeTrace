@@ -1,0 +1,117 @@
+File: C:\Users\patar\OneDrive\Desktop\Tracecode\src\components\IntegrityReport.tsx
+  Line 51:23 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 268:64 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 268:121 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 269:63 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 269:119 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 276:69 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 277:64 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 278:68 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 279:68 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 286:75 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 287:77 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 288:76 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 289:85 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+
+File: C:\Users\patar\OneDrive\Desktop\Tracecode\src\components\NotificationCenter.tsx
+  Line 40:10 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 41:25 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 162:42 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+
+File: C:\Users\patar\OneDrive\Desktop\Tracecode\src\components\ide\SandboxWorkspace.tsx
+  Line 167:48 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 168:48 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 280:9 - [react-hooks/exhaustive-deps] The 'handleRunCode' function makes the dependencies of useEffect Hook (at line 202) change on every render. To fix this, wrap the definition of 'handleRunCode' in its own useCallback() Hook.
+  Line 400:19 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 494:17 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+
+File: C:\Users\patar\OneDrive\Desktop\Tracecode\src\hooks\useAnalyticsQueries.ts
+  Line 27:12 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 42:23 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 330:31 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 494:79 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 498:39 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 500:40 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 536:79 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 540:39 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 542:40 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+
+File: C:\Users\patar\OneDrive\Desktop\Tracecode\src\integrations\supabase\types.ts
+  Line 240:6 - [null] Parsing error: Type expected.
+
+File: C:\Users\patar\OneDrive\Desktop\Tracecode\src\pages\student\ClassroomDetail.tsx
+  Line 17:46 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 18:50 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 19:50 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 35:35 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+
+File: C:\Users\patar\OneDrive\Desktop\Tracecode\src\pages\student\Submissions.tsx
+
+File: C:\Users\patar\OneDrive\Desktop\Tracecode\src\pages\teacher\AssignmentDetail.tsx
+  Line 76:46 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 99:46 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 130:24 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 135:32 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 136:51 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 146:27 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 147:51 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 160:40 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 161:29 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 164:37 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 173:25 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 179:30 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 326:17 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 407:17 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 423:33 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 469:17 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 480:17 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 526:19 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 537:80 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 591:19 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 602:54 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 780:82 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 998:106 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 1458:106 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 1631:79 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+
+File: C:\Users\patar\OneDrive\Desktop\Tracecode\src\pages\teacher\ClassroomDetail.tsx
+  Line 53:46 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 54:44 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 55:50 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 138:19 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 180:39 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 183:43 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 184:46 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 206:32 - [react-hooks/exhaustive-deps] React Hook useEffect has a missing dependency: 'load'. Either include it or remove the dependency array.
+  Line 283:17 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 350:17 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 445:17 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 501:17 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 512:49 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 538:17 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 692:71 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 703:79 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 717:69 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+
+File: C:\Users\patar\OneDrive\Desktop\Tracecode\src\pages\teacher\Monitoring.tsx
+  Line 79:52 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 101:30 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 108:27 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 136:61 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+
+File: C:\Users\patar\OneDrive\Desktop\Tracecode\src\pages\teacher\Reports.tsx
+  Line 77:9 - [react-hooks/exhaustive-deps] The 'reportItems' logical expression could make the dependencies of useMemo Hook (at line 98) change on every render. To fix this, wrap the initialization of 'reportItems' in its own useMemo() Hook.
+
+File: C:\Users\patar\OneDrive\Desktop\Tracecode\src\pages\teacher\Submissions.tsx
+  Line 25:47 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 27:50 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 28:53 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 31:59 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 42:57 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 48:50 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 63:50 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 77:34 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 85:27 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 95:32 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 158:21 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+

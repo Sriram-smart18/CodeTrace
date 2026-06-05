@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { supabase } from "@/integrations/supabase/client";
@@ -23,6 +23,7 @@ import { subscriptionManager } from "@/lib/subscriptionManager";
 import type { Tables, AssessmentResult } from "@/integrations/supabase/types";
 import { IntegrityReport, type IntegrityEvaluation } from "@/components/IntegrityReport";
 import { DiffEditor } from "@monaco-editor/react";
+import { useTheme } from "next-themes";
 
 type Assignment = Tables<"assignments">;
 
@@ -41,10 +42,19 @@ interface SubmissionWithProfile {
   profile?: { name: string; uid: string | null; email: string } | null;
 }
 
+interface PlagiarismDetails {
+  matched_student_ids?: string[];
+  matched_submission_ids?: string[];
+  similarity_score?: number;
+  plagiarism_explanation?: string;
+  similarity_percentage?: number;
+}
+
 export default function TeacherAssignmentDetail() {
   const { assignmentId } = useParams();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { theme } = useTheme();
 
   const [assignment, setAssignment] = useState<Assignment | null>(null);
   const [submissions, setSubmissions] = useState<SubmissionWithProfile[]>([]);
@@ -71,7 +81,7 @@ export default function TeacherAssignmentDetail() {
   const [memoryLimit, setMemoryLimit] = useState(256);
   const [maxSubmissions, setMaxSubmissions] = useState("Unlimited");
   const [supportedLanguages, setSupportedLanguages] = useState<string[]>([]);
-  const [testCases, setTestCases] = useState<any[]>([]);
+  const [testCases, setTestCases] = useState<Tables<"test_cases">[]>([]);
   const [savingChallenge, setSavingChallenge] = useState(false);
   const [rejudgingAll, setRejudgingAll] = useState(false);
   const [rejudgingSubId, setRejudgingSubId] = useState<string | null>(null);
@@ -94,12 +104,12 @@ export default function TeacherAssignmentDetail() {
 
   // Test case dialog states
   const [tcDialogOpen, setTcDialogOpen] = useState(false);
-  const [editingTc, setEditingTc] = useState<any | null>(null);
+  const [editingTc, setEditingTc] = useState<Tables<"test_cases"> | null>(null);
   const [tcInput, setTcInput] = useState("");
   const [tcOutput, setTcOutput] = useState("");
   const [tcIsHidden, setTcIsHidden] = useState(false);
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     if (!assignmentId) return;
 
     const { data: asgn } = await supabase
@@ -125,13 +135,13 @@ export default function TeacherAssignmentDetail() {
 
     if (subs) {
       const studentIds = new Set<string>();
-      subs.forEach((s: any) => {
+      subs.forEach((s) => {
         if (s.student_id) studentIds.add(s.student_id);
       });
 
       if (assessList) {
-        assessList.forEach((a: any) => {
-          const details = a.plagiarism_details as any;
+        assessList.forEach((a) => {
+          const details = a.plagiarism_details as unknown as PlagiarismDetails;
           if (details && Array.isArray(details.matched_student_ids)) {
             details.matched_student_ids.forEach((id: string) => {
               if (id && id !== "teacher") studentIds.add(id);
@@ -141,8 +151,8 @@ export default function TeacherAssignmentDetail() {
       }
 
       if (evals) {
-        evals.forEach((e: any) => {
-          const details = e.plagiarism_details as any;
+        evals.forEach((e) => {
+          const details = e.plagiarism_details as unknown as PlagiarismDetails;
           if (details && Array.isArray(details.matched_student_ids)) {
             details.matched_student_ids.forEach((id: string) => {
               if (id && id !== "teacher") studentIds.add(id);
@@ -155,11 +165,11 @@ export default function TeacherAssignmentDetail() {
         .from("profiles").select("user_id, name, uid, email")
         .in("user_id", Array.from(studentIds));
 
-      const profileMap: Record<string, any> = {};
-      profiles?.forEach((p: any) => { profileMap[p.user_id] = p; });
+      const profileMap: Record<string, Tables<"profiles">> = {};
+      profiles?.forEach((p) => { profileMap[p.user_id] = p; });
       setProfilesMap(profileMap);
 
-      const enriched = subs.map((s: any) => ({
+      const enriched = subs.map((s) => ({
         ...s,
         profile: profileMap[s.student_id] || null,
       }));
@@ -168,13 +178,13 @@ export default function TeacherAssignmentDetail() {
 
     if (evals) {
       const map: Record<string, IntegrityEvaluation> = {};
-      evals.forEach((e: any) => { map[e.submission_id] = e; });
+      evals.forEach((e) => { map[e.submission_id] = e; });
       setEvaluations(map);
     }
 
     if (assessList) {
       const map: Record<string, AssessmentResult> = {};
-      assessList.forEach((a: any) => { map[a.submission_id] = a; });
+      assessList.forEach((a) => { map[a.submission_id] = a; });
       setAssessments(map);
     }
 
@@ -205,7 +215,7 @@ export default function TeacherAssignmentDetail() {
     if (tcs) {
       setTestCases(tcs);
     }
-  };
+  }, [assignmentId]);
 
   useEffect(() => {
     fetchData();
@@ -245,7 +255,7 @@ export default function TeacherAssignmentDetail() {
       unsubJobs();
       unsubAssess();
     };
-  }, [assignmentId]);
+  }, [assignmentId, fetchData]);
 
   const handleEvaluate = async (submissionId: string) => {
     setEvaluating(submissionId);
@@ -321,8 +331,8 @@ export default function TeacherAssignmentDetail() {
         description: `New Score: ${data.score}% · Verdict: ${data.verdict}` 
       });
       await fetchData();
-    } catch (e: any) {
-      toast({ title: "Rejudge Failed", description: e.message, variant: "destructive" });
+    } catch (e) {
+      toast({ title: "Rejudge Failed", description: e instanceof Error ? e.message : String(e), variant: "destructive" });
     } finally {
       setRejudgingSubId(null);
     }
@@ -402,8 +412,8 @@ export default function TeacherAssignmentDetail() {
       if (asgErr) throw asgErr;
 
       toast({ title: "Challenge Saved", description: "Successfully updated coding problem parameters." });
-    } catch (e: any) {
-      toast({ title: "Save Failed", description: e.message, variant: "destructive" });
+    } catch (e) {
+      toast({ title: "Save Failed", description: e instanceof Error ? e.message : String(e), variant: "destructive" });
     } finally {
       setSavingChallenge(false);
     }
@@ -418,7 +428,7 @@ export default function TeacherAssignmentDetail() {
     setTcDialogOpen(true);
   };
 
-  const handleOpenEditTc = (tc: any) => {
+  const handleOpenEditTc = (tc: Tables<"test_cases">) => {
     setEditingTc(tc);
     setTcInput(tc.input || "");
     setTcOutput(tc.expected_output || "");
@@ -464,8 +474,8 @@ export default function TeacherAssignmentDetail() {
         .order("created_at", { ascending: true });
       if (tcs) setTestCases(tcs);
 
-    } catch (e: any) {
-      toast({ title: "Failed to save test case", description: e.message, variant: "destructive" });
+    } catch (e) {
+      toast({ title: "Failed to save test case", description: e instanceof Error ? e.message : String(e), variant: "destructive" });
     }
   };
 
@@ -475,8 +485,8 @@ export default function TeacherAssignmentDetail() {
       if (error) throw error;
       toast({ title: "Test Case Deleted" });
       setTestCases(prev => prev.filter(tc => tc.id !== id));
-    } catch (e: any) {
-      toast({ title: "Deletion Failed", description: e.message, variant: "destructive" });
+    } catch (e) {
+      toast({ title: "Deletion Failed", description: e instanceof Error ? e.message : String(e), variant: "destructive" });
     }
   };
 
@@ -521,10 +531,10 @@ export default function TeacherAssignmentDetail() {
           selectedMatchId: matchedSubId
         };
       });
-    } catch (err: any) {
+    } catch (err) {
       toast({
         title: "Error fetching matched code",
-        description: err.message,
+        description: err instanceof Error ? err.message : String(err),
         variant: "destructive"
       });
     } finally {
@@ -532,7 +542,7 @@ export default function TeacherAssignmentDetail() {
     }
   };
 
-  const handleOpenComparison = async (sub: SubmissionWithProfile, plagDetails: any) => {
+  const handleOpenComparison = async (sub: SubmissionWithProfile, plagDetails: PlagiarismDetails) => {
     if (!plagDetails || !plagDetails.matched_submission_ids || plagDetails.matched_submission_ids.length === 0) {
       toast({
         title: "No match",
@@ -586,10 +596,10 @@ export default function TeacherAssignmentDetail() {
         selectedMatchId: firstMatchId,
       });
       setComparisonModalOpen(true);
-    } catch (err: any) {
+    } catch (err) {
       toast({
         title: "Error loading comparison",
-        description: err.message,
+        description: err instanceof Error ? err.message : String(err),
         variant: "destructive"
       });
     } finally {
@@ -597,7 +607,7 @@ export default function TeacherAssignmentDetail() {
     }
   };
 
-  const getMatchedStudentDisplayName = (plagDetails: any) => {
+  const getMatchedStudentDisplayName = (plagDetails: PlagiarismDetails) => {
     if (!plagDetails) return "—";
     const highestScore = plagDetails.similarity_percentage || 0;
     if (highestScore < 30) return "None";
@@ -775,7 +785,7 @@ export default function TeacherAssignmentDetail() {
   const plagStats = plagiarismEvaluated.reduce((acc, s) => {
     const assess = assessments[s.id];
     const eval_ = evaluations[s.id];
-    const details = (assess?.plagiarism_details || eval_?.plagiarism_details) as any;
+    const details = (assess?.plagiarism_details || eval_?.plagiarism_details) as unknown as PlagiarismDetails;
     const similarity = details?.similarity_percentage || 0;
     
     acc.sum += similarity;
@@ -993,7 +1003,7 @@ export default function TeacherAssignmentDetail() {
                                     size="sm"
                                     variant="outline"
                                     className="h-7 text-xs px-2"
-                                    onClick={() => { setSelectedEval(eval_ || { submission_id: s.id } as any); setDetailOpen(true); }}
+                                    onClick={() => { setSelectedEval(eval_ || ({ submission_id: s.id } as unknown as IntegrityEvaluation)); setDetailOpen(true); }}
                                   >
                                     Report
                                   </Button>
@@ -1138,7 +1148,7 @@ export default function TeacherAssignmentDetail() {
                               className={`px-3 py-1.5 rounded-lg border text-xs font-mono transition-all ${
                                 active 
                                   ? "bg-primary border-primary text-white font-bold" 
-                                  : "bg-transparent border-slate-200 dark:border-white/10 text-slate-500 hover:text-slate-200"
+                                  : "bg-transparent border-slate-200 dark:border-white/10 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
                               }`}
                             >
                               {lang.toUpperCase()}
@@ -1453,7 +1463,7 @@ export default function TeacherAssignmentDetail() {
                       plagiarismFiltered.map((s) => {
                         const assess = assessments[s.id];
                         const eval_ = evaluations[s.id];
-                        const plagDetails = (assess?.plagiarism_details || eval_?.plagiarism_details) as any;
+                        const plagDetails = (assess?.plagiarism_details || eval_?.plagiarism_details) as unknown as PlagiarismDetails;
                         const similarity = plagDetails?.similarity_percentage ?? null;
 
                         return (
@@ -1584,15 +1594,15 @@ export default function TeacherAssignmentDetail() {
 
       {/* Plagiarism Comparison Modal */}
       <Dialog open={comparisonModalOpen} onOpenChange={setComparisonModalOpen}>
-        <DialogContent className="max-w-5xl w-[90vw] max-h-[90vh] overflow-hidden flex flex-col p-6 bg-slate-950 text-slate-100 border border-slate-800">
-          <DialogHeader className="pb-3 border-b border-slate-800">
+        <DialogContent className="max-w-5xl w-[90vw] max-h-[90vh] overflow-hidden flex flex-col p-6">
+          <DialogHeader className="pb-3 border-b">
             <div className="flex items-center justify-between">
               <div>
                 <DialogTitle className="text-lg font-bold flex items-center gap-2 text-red-500">
                   <ShieldAlert className="h-5 w-5" />
                   Plagiarism Comparison Analysis
                 </DialogTitle>
-                <DialogDescription className="text-slate-400 text-xs mt-1">
+                <DialogDescription className="text-xs mt-1">
                   Compare code side-by-side to review matched patterns and structural integrity.
                 </DialogDescription>
               </div>
@@ -1602,31 +1612,31 @@ export default function TeacherAssignmentDetail() {
           {comparisonData && (
             <div className="flex-1 flex flex-col space-y-4 overflow-hidden pt-4">
               {/* Info & Explanation */}
-              <div className="p-4 rounded-lg bg-red-950/20 border border-red-900/30 space-y-2">
-                <h4 className="text-xs font-bold uppercase tracking-wider text-red-400">Analysis Verdict</h4>
-                <p className="text-sm text-slate-300 font-medium font-sans">
+              <div className="p-4 rounded-lg bg-red-500/10 dark:bg-red-950/20 border border-red-200 dark:border-red-900/30 space-y-2">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-red-500 dark:text-red-400">Analysis Verdict</h4>
+                <p className="text-sm font-medium font-sans">
                   {comparisonData.explanation}
                 </p>
                 
                 {/* Select alternative match if there are multiple matches */}
                 {comparisonData.matchedSubmissionIds.length > 1 && (
-                  <div className="flex items-center gap-2 pt-2 border-t border-red-900/20 mt-2">
-                    <span className="text-xs text-slate-400 font-medium">Alternative Matches:</span>
+                  <div className="flex items-center gap-2 pt-2 border-t border-red-200 dark:border-red-900/20 mt-2">
+                    <span className="text-xs text-muted-foreground font-medium">Alternative Matches:</span>
                     <Select
                       value={comparisonData.selectedMatchId}
                       onValueChange={(val) => loadMatchCode(comparisonData.currentSubmission, val)}
                     >
-                      <SelectTrigger className="w-[280px] h-8 text-xs bg-slate-900 border-slate-800 text-slate-200">
+                      <SelectTrigger className="w-[280px] h-8 text-xs bg-background border-input text-foreground">
                         <SelectValue placeholder="Select matched source" />
                       </SelectTrigger>
-                      <SelectContent className="bg-slate-900 border-slate-800 text-slate-200">
+                      <SelectContent className="bg-popover border-border text-popover-foreground">
                         {comparisonData.matchedSubmissionIds.map((id, index) => {
                           let label = "";
                           if (id === "reference") {
                             label = "Teacher Reference Solution";
                           } else {
                             const assess = assessments[comparisonData.currentSubmission.id];
-                            const plagDetails = assess?.plagiarism_details as any;
+                            const plagDetails = assess?.plagiarism_details as unknown as PlagiarismDetails;
                             const matchIndex = id === plagDetails?.matched_submission_ids?.[0] ? 0 : 
                                               plagDetails?.matched_submission_ids?.indexOf(id) ?? -1;
                             const studentId = matchIndex >= 0 ? plagDetails?.matched_student_ids?.[matchIndex] : null;
@@ -1634,7 +1644,7 @@ export default function TeacherAssignmentDetail() {
                             label = `${name} (Match #${index + 1})`;
                           }
                           return (
-                            <SelectItem key={id} value={id} className="text-xs focus:bg-slate-800 focus:text-slate-100">
+                            <SelectItem key={id} value={id} className="text-xs">
                               {label}
                             </SelectItem>
                           );
@@ -1646,7 +1656,7 @@ export default function TeacherAssignmentDetail() {
               </div>
 
               {/* Labels Header */}
-              <div className="grid grid-cols-2 gap-4 text-xs font-semibold px-2 tracking-wide uppercase text-slate-400">
+              <div className="grid grid-cols-2 gap-4 text-xs font-semibold px-2 tracking-wide uppercase text-muted-foreground">
                 <div className="flex items-center gap-2 border-l-2 border-primary pl-2">
                   <span>LEFT: {comparisonData.leftLabel}</span>
                 </div>
@@ -1656,9 +1666,9 @@ export default function TeacherAssignmentDetail() {
               </div>
 
               {/* Diff Editor Container */}
-              <div className="flex-1 min-h-[400px] border border-slate-800 rounded bg-slate-900 relative">
+              <div className="flex-1 min-h-[400px] border border-border rounded bg-background relative">
                 {comparing && (
-                  <div className="absolute inset-0 flex items-center justify-center bg-slate-900/80 z-10">
+                  <div className="absolute inset-0 flex items-center justify-center bg-background/80 z-10">
                     <Loader2 className="h-8 w-8 animate-spin text-primary" />
                   </div>
                 )}
@@ -1667,7 +1677,7 @@ export default function TeacherAssignmentDetail() {
                   original={comparisonData.leftCode}
                   modified={comparisonData.rightCode}
                   language={comparisonData.language}
-                  theme="vs-dark"
+                  theme={theme === "light" ? "vs" : "vs-dark"}
                   options={{
                     readOnly: true,
                     originalEditable: false,
@@ -1683,8 +1693,8 @@ export default function TeacherAssignmentDetail() {
             </div>
           )}
 
-          <DialogFooter className="mt-4 border-t border-slate-800 pt-3 flex justify-end">
-            <Button variant="outline" size="sm" onClick={() => setComparisonModalOpen(false)} className="bg-slate-900 border-slate-800 hover:bg-slate-800 text-slate-300">
+          <DialogFooter className="mt-4 border-t pt-3 flex justify-end">
+            <Button variant="outline" size="sm" onClick={() => setComparisonModalOpen(false)}>
               Close Comparison
             </Button>
           </DialogFooter>

@@ -207,7 +207,7 @@ export const IdeMonacoEditor: React.FC = () => {
     return () => {
       console.log('[EFFECT CLEANUP] IdeMonacoEditor: Switch model cleanup');
     };
-  }, [activeFileId]);
+  }, [activeFileId, activeFileName, debouncedUpdateFileContent, flushPendingCursor, flushPendingUpdate]);
 
   // Track cursor position changes and sync to state
   useEffect(() => {

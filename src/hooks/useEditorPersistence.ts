@@ -66,7 +66,9 @@ export function useEditorPersistence(userId: string | undefined, assignmentId: s
       console.error("Error loading editor state from localStorage", e);
       try {
         localStorage.removeItem(getStorageKey());
-      } catch (wipeErr) {}
+      } catch (wipeErr) {
+        // Ignore potential localStorage errors on write-blocked environments
+      }
       return null;
     }
   }, [getStorageKey]);

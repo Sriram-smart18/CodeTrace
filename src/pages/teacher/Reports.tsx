@@ -74,7 +74,7 @@ export default function TeacherReports() {
     limit,
   });
 
-  const reportItems = data?.data || [];
+  const reportItems = useMemo(() => data?.data || [], [data?.data]);
   const totalCount = data?.totalCount || 0;
   const totalPages = Math.ceil(totalCount / limit);
 

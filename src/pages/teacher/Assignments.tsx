@@ -15,10 +15,16 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Plus, Eye, EyeOff, Radio, FileText } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
+import { Tables } from "@/integrations/supabase/types";
+
+type EnrichedAssignment = Tables<"assignments"> & {
+  classrooms: { classroom_name: string | null; subject_name: string | null } | null;
+};
+
 export default function TeacherAssignments() {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const [assignments, setAssignments] = useState<any[]>([]);
+  const [assignments, setAssignments] = useState<EnrichedAssignment[]>([]);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [dueDate, setDueDate] = useState("");
@@ -38,7 +44,7 @@ export default function TeacherAssignments() {
       .then(({ data }) => {
         if (data) setAssignments(data);
       });
-  }, [user?.id]);
+  }, [user]);
 
   useEffect(() => { fetchAssignments(); }, [fetchAssignments]);
 
@@ -106,7 +112,7 @@ export default function TeacherAssignments() {
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label>Difficulty</Label>
-                    <Select value={difficulty} onValueChange={(v: any) => setDifficulty(v)}>
+                    <Select value={difficulty} onValueChange={(v: "Easy" | "Medium" | "Hard") => setDifficulty(v)}>
                       <SelectTrigger><SelectValue /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="Easy">🟢 Easy</SelectItem>
@@ -117,7 +123,7 @@ export default function TeacherAssignments() {
                   </div>
                   <div className="space-y-2">
                     <Label>Expected Skill Level</Label>
-                    <Select value={expectedSkillLevel} onValueChange={(v: any) => setExpectedSkillLevel(v)}>
+                    <Select value={expectedSkillLevel} onValueChange={(v: "Beginner" | "Intermediate" | "Advanced") => setExpectedSkillLevel(v)}>
                       <SelectTrigger><SelectValue /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="Beginner">Beginner</SelectItem>

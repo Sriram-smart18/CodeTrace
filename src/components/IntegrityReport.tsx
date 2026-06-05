@@ -13,6 +13,29 @@ import { type AssessmentResult } from "@/integrations/supabase/types";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+interface CorrectnessDetails {
+  visible_passed: number;
+  visible_total: number;
+  hidden_passed: number;
+  hidden_total: number;
+}
+
+interface QualityDetails {
+  readability: number;
+  naming: number;
+  modularity: number;
+  complexity: number;
+}
+
+interface PlagiarismDetails {
+  ast_similarity: number;
+  token_similarity: number;
+  levenshtein_distance: number;
+  winnowing_similarity: number;
+  matched_student_ids?: string[];
+  matched_submission_ids?: string[];
+}
+
 interface SuspiciousSegment {
   code: string;
   reason: string;
@@ -48,6 +71,7 @@ export interface IntegrityEvaluation {
   total_score: number | null;
   feedback: string | null;
   detailed_report: { strengths?: string[]; improvements?: string[] } | null;
+  plagiarism_details: PlagiarismDetails | null;
   // New integrity fields
   risk_level: string | null;
   integrity_verdict: string | null;
@@ -264,28 +288,28 @@ export function IntegrityReport({ evaluation: ev, assessment, open, onOpenChange
               <ScoreBar label="Correctness" score={assessment ? assessment.correctness_score : ev.correctness_score} />
               {assessment?.correctness_details && (
                 <div className="text-[11px] text-muted-foreground pl-4 -mt-2">
-                  Visible: {(assessment.correctness_details as any).visible_passed}/{(assessment.correctness_details as any).visible_total} passed | 
-                  Hidden: {(assessment.correctness_details as any).hidden_passed}/{(assessment.correctness_details as any).hidden_total} passed
+                  Visible: {(assessment.correctness_details as unknown as CorrectnessDetails).visible_passed}/{(assessment.correctness_details as unknown as CorrectnessDetails).visible_total} passed | 
+                  Hidden: {(assessment.correctness_details as unknown as CorrectnessDetails).hidden_passed}/{(assessment.correctness_details as unknown as CorrectnessDetails).hidden_total} passed
                 </div>
               )}
 
               <ScoreBar label="Code Quality" score={assessment ? assessment.quality_score : ev.code_quality_score} />
               {assessment?.quality_details && (
                 <div className="text-[11px] text-muted-foreground pl-4 -mt-2 grid grid-cols-2 gap-x-2 gap-y-0.5">
-                  <div>Readability: {(assessment.quality_details as any).readability}/100</div>
-                  <div>Naming: {(assessment.quality_details as any).naming}/100</div>
-                  <div>Modularity: {(assessment.quality_details as any).modularity}/100</div>
-                  <div>Complexity: {(assessment.quality_details as any).complexity}/100</div>
+                  <div>Readability: {(assessment.quality_details as unknown as QualityDetails).readability}/100</div>
+                  <div>Naming: {(assessment.quality_details as unknown as QualityDetails).naming}/100</div>
+                  <div>Modularity: {(assessment.quality_details as unknown as QualityDetails).modularity}/100</div>
+                  <div>Complexity: {(assessment.quality_details as unknown as QualityDetails).complexity}/100</div>
                 </div>
               )}
 
               <ScoreBar label="Plagiarism Risk" score={assessment ? (100 - assessment.plagiarism_score) : ev.plagiarism_score} inverted />
               {assessment?.plagiarism_details && (
                 <div className="text-[11px] text-muted-foreground pl-4 -mt-2 grid grid-cols-2 gap-x-2 gap-y-0.5">
-                  <div>AST Similarity: {(assessment.plagiarism_details as any).ast_similarity}%</div>
-                  <div>Token Similarity: {(assessment.plagiarism_details as any).token_similarity}%</div>
-                  <div>Levenshtein Sim: {(assessment.plagiarism_details as any).levenshtein_distance}%</div>
-                  <div>Fingerprints (Winnowing): {(assessment.plagiarism_details as any).winnowing_similarity}%</div>
+                  <div>AST Similarity: {(assessment.plagiarism_details as unknown as PlagiarismDetails).ast_similarity}%</div>
+                  <div>Token Similarity: {(assessment.plagiarism_details as unknown as PlagiarismDetails).token_similarity}%</div>
+                  <div>Levenshtein Sim: {(assessment.plagiarism_details as unknown as PlagiarismDetails).levenshtein_distance}%</div>
+                  <div>Fingerprints (Winnowing): {(assessment.plagiarism_details as unknown as PlagiarismDetails).winnowing_similarity}%</div>
                 </div>
               )}
 

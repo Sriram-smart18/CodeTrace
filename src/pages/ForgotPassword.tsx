@@ -34,10 +34,11 @@ export default function ForgotPassword() {
         });
         setEmail("");
       }
-    } catch (err: any) {
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "An unexpected error occurred.";
       toast({
         title: "Unexpected Error",
-        description: err.message || "An unexpected error occurred.",
+        description: message,
         variant: "destructive",
       });
     } finally {

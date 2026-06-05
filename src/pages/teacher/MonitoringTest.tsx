@@ -11,6 +11,7 @@ import { Activity, ShieldAlert, Monitor, Terminal as TermIcon, Play, Save, Check
 import { supabase } from "@/integrations/supabase/client";
 import { io, Socket } from "socket.io-client";
 import { toast } from "sonner";
+import { useAuth } from "@/contexts/AuthContext";
 
 const EXECUTION_SERVER_URL = import.meta.env.VITE_EXECUTION_SERVER_URL || "http://localhost:3001";
 
@@ -22,6 +23,8 @@ interface LogMessage {
 }
 
 export default function TeacherMonitoringTest() {
+  const { session } = useAuth();
+  const token = session?.access_token;
   const [assignments, setAssignments] = useState<any[]>([]);
   const [students, setStudents] = useState<any[]>([]);
   
@@ -96,7 +99,11 @@ export default function TeacherMonitoringTest() {
     addLog("info", "[INFO]", `Configuring simulation room: ${roomId}`);
 
     // --- Student Socket.IO Connection ---
-    const studentSocket = io(EXECUTION_SERVER_URL);
+    const studentSocket = io(EXECUTION_SERVER_URL, {
+      auth: {
+        token: token
+      }
+    });
     studentSocketRef.current = studentSocket;
 
     studentSocket.on("connect", () => {
@@ -111,7 +118,11 @@ export default function TeacherMonitoringTest() {
     });
 
     // --- Teacher Socket.IO Connection ---
-    const teacherSocket = io(EXECUTION_SERVER_URL);
+    const teacherSocket = io(EXECUTION_SERVER_URL, {
+      auth: {
+        token: token
+      }
+    });
     teacherSocketRef.current = teacherSocket;
 
     teacherSocket.on("connect", () => {
@@ -206,7 +217,7 @@ export default function TeacherMonitoringTest() {
       
       addLog("info", "[INFO]", "Cleaned up simulator room sockets and realtime channel.");
     };
-  }, [selectedAssignmentId, selectedStudentId]);
+  }, [selectedAssignmentId, selectedStudentId, token]);
 
   // Simulate emitting student events
   const emitSimulatedEvent = async (eventType: "typing" | "run" | "save" | "submit") => {
@@ -330,19 +341,19 @@ export default function TeacherMonitoringTest() {
             </div>
 
             <div className="grid grid-cols-3 gap-2 items-end">
-              <div className="flex flex-col items-center justify-center p-2 rounded bg-slate-900/40 border border-white/5 h-9">
+              <div className="flex flex-col items-center justify-center p-2 rounded bg-muted/40 border border-border h-9">
                 <span className="text-[8px] uppercase tracking-wider text-muted-foreground">Student IO</span>
                 <span className={`text-[10px] font-bold mt-0.5 ${studentConnected ? "text-emerald-500" : "text-red-500"}`}>
                   {studentConnected ? "ONLINE" : "OFFLINE"}
                 </span>
               </div>
-              <div className="flex flex-col items-center justify-center p-2 rounded bg-slate-900/40 border border-white/5 h-9">
+              <div className="flex flex-col items-center justify-center p-2 rounded bg-muted/40 border border-border h-9">
                 <span className="text-[8px] uppercase tracking-wider text-muted-foreground">Teacher IO</span>
                 <span className={`text-[10px] font-bold mt-0.5 ${teacherConnected ? "text-emerald-500" : "text-red-500"}`}>
                   {teacherConnected ? "ONLINE" : "OFFLINE"}
                 </span>
               </div>
-              <div className="flex flex-col items-center justify-center p-2 rounded bg-slate-900/40 border border-white/5 h-9">
+              <div className="flex flex-col items-center justify-center p-2 rounded bg-muted/40 border border-border h-9">
                 <span className="text-[8px] uppercase tracking-wider text-muted-foreground">Realtime DB</span>
                 <span className={`text-[10px] font-bold mt-0.5 ${realtimeConnected ? "text-emerald-500" : "text-red-500"}`}>
                   {realtimeConnected ? "ONLINE" : "OFFLINE"}
@@ -356,24 +367,24 @@ export default function TeacherMonitoringTest() {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
           
           {/* Student Simulator Panel */}
-          <Card className="lg:col-span-4 border-slate-800 bg-slate-950 text-slate-100 flex flex-col justify-between">
-            <CardHeader className="pb-3 border-b border-slate-800">
-              <CardTitle className="text-sm font-bold flex items-center gap-2 text-cyan-400">
+          <Card className="lg:col-span-4 border-border bg-card text-foreground flex flex-col justify-between">
+            <CardHeader className="pb-3 border-b border-border">
+              <CardTitle className="text-sm font-bold flex items-center gap-2 text-cyan-500 dark:text-cyan-400">
                 <Activity className="h-4 w-4" />
                 Student Code Simulator
               </CardTitle>
-              <CardDescription className="text-[10px] text-slate-400">
+              <CardDescription className="text-[10px] text-muted-foreground">
                 Simulate editor behavior and mock coding keystrokes.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4 pt-4 flex-1">
               <div className="space-y-1">
-                <Label className="text-[11px] text-slate-400">Mock Editor Code Snapshot</Label>
+                <Label className="text-[11px] text-muted-foreground">Mock Editor Code Snapshot</Label>
                 <Textarea
                   value={simulatedCode}
                   onChange={(e) => setSimulatedCode(e.target.value)}
                   rows={8}
-                  className="font-mono text-xs bg-slate-900 border-slate-800 text-slate-100"
+                  className="font-mono text-xs bg-background border-input text-foreground"
                 />
               </div>
 
@@ -382,36 +393,36 @@ export default function TeacherMonitoringTest() {
                   size="sm" 
                   variant="outline" 
                   onClick={() => emitSimulatedEvent("typing")} 
-                  className="text-xs bg-slate-900 border-slate-800 hover:bg-slate-800 text-slate-200"
+                  className="text-xs bg-secondary border-border hover:bg-secondary/80 text-secondary-foreground"
                 >
-                  <TermIcon className="h-3.5 w-3.5 mr-1 text-cyan-400" />
+                  <TermIcon className="h-3.5 w-3.5 mr-1 text-cyan-600 dark:text-cyan-400" />
                   Emit typing
                 </Button>
                 <Button 
                   size="sm" 
                   variant="outline" 
                   onClick={() => emitSimulatedEvent("run")} 
-                  className="text-xs bg-slate-900 border-slate-800 hover:bg-slate-800 text-slate-200"
+                  className="text-xs bg-secondary border-border hover:bg-secondary/80 text-secondary-foreground"
                 >
-                  <Play className="h-3.5 w-3.5 mr-1 text-orange-400 animate-pulse" />
+                  <Play className="h-3.5 w-3.5 mr-1 text-orange-600 dark:text-orange-400 animate-pulse" />
                   Emit run
                 </Button>
                 <Button 
                   size="sm" 
                   variant="outline" 
                   onClick={() => emitSimulatedEvent("save")} 
-                  className="text-xs bg-slate-900 border-slate-800 hover:bg-slate-800 text-slate-200"
+                  className="text-xs bg-secondary border-border hover:bg-secondary/80 text-secondary-foreground"
                 >
-                  <Save className="h-3.5 w-3.5 mr-1 text-yellow-400" />
+                  <Save className="h-3.5 w-3.5 mr-1 text-yellow-600 dark:text-yellow-400" />
                   Emit save
                 </Button>
                 <Button 
                   size="sm" 
                   variant="outline" 
                   onClick={() => emitSimulatedEvent("submit")} 
-                  className="text-xs bg-slate-900 border-slate-800 hover:bg-slate-800 text-slate-200"
+                  className="text-xs bg-secondary border-border hover:bg-secondary/80 text-secondary-foreground"
                 >
-                  <CheckCircle className="h-3.5 w-3.5 mr-1 text-emerald-400" />
+                  <CheckCircle className="h-3.5 w-3.5 mr-1 text-emerald-600 dark:text-emerald-400" />
                   Emit submit
                 </Button>
               </div>
@@ -419,42 +430,42 @@ export default function TeacherMonitoringTest() {
           </Card>
 
           {/* Diagnostics Console Panel */}
-          <Card className="lg:col-span-8 border-slate-800 bg-slate-950 text-slate-100 flex flex-col min-h-[450px]">
-            <CardHeader className="pb-3 border-b border-slate-800 flex flex-row items-center justify-between">
+          <Card className="lg:col-span-8 border-border bg-card text-foreground flex flex-col min-h-[450px]">
+            <CardHeader className="pb-3 border-b border-border flex flex-row items-center justify-between">
               <div>
-                <CardTitle className="text-sm font-bold flex items-center gap-2 text-red-400">
+                <CardTitle className="text-sm font-bold flex items-center gap-2 text-red-500 dark:text-red-400">
                   <Monitor className="h-4 w-4" />
                   Diagnostics Telemetry Terminal
                 </CardTitle>
-                <CardDescription className="text-[10px] text-slate-400">
+                <CardDescription className="text-[10px] text-muted-foreground">
                   Captured packet events and round-trip socket diagnostics.
                 </CardDescription>
               </div>
-              <div className="flex items-center gap-4 text-xs font-mono text-slate-400 shrink-0">
+              <div className="flex items-center gap-4 text-xs font-mono text-muted-foreground shrink-0">
                 <div>Events: <span className="text-primary font-bold">{eventCount}</span></div>
-                <div>Latency: <span className="text-cyan-400 font-bold">{latency !== null ? `${latency}ms` : "—"}</span></div>
+                <div>Latency: <span className="text-cyan-600 dark:text-cyan-400 font-bold">{latency !== null ? `${latency}ms` : "—"}</span></div>
               </div>
             </CardHeader>
-            <CardContent className="flex-1 flex flex-col overflow-hidden p-0 bg-black/40">
+            <CardContent className="flex-1 flex flex-col overflow-hidden p-0 bg-muted/20 dark:bg-black/40">
               {/* Terminal Logs View */}
               <div className="flex-1 overflow-y-auto p-4 font-mono text-[11px] space-y-1.5 min-h-[300px] max-h-[380px]">
                 {logs.map((log) => {
-                  let colorClass = "text-slate-300";
-                  if (log.content.includes("[STUDENT_EVENT_SENT]")) colorClass = "text-cyan-400";
-                  else if (log.content.includes("[SERVER_EVENT_RECEIVED]")) colorClass = "text-green-400";
-                  else if (log.content.includes("[REALTIME_EVENT_RECEIVED]")) colorClass = "text-yellow-500 font-semibold";
-                  else if (log.content.includes("[TEACHER_UI_UPDATED]")) colorClass = "text-purple-400 animate-pulse";
-                  else if (log.content.includes("[HEARTBEAT]")) colorClass = "text-slate-500";
+                  let colorClass = "text-slate-700 dark:text-slate-300";
+                  if (log.content.includes("[STUDENT_EVENT_SENT]")) colorClass = "text-cyan-600 dark:text-cyan-400";
+                  else if (log.content.includes("[SERVER_EVENT_RECEIVED]")) colorClass = "text-emerald-600 dark:text-green-400";
+                  else if (log.content.includes("[REALTIME_EVENT_RECEIVED]")) colorClass = "text-amber-600 dark:text-yellow-500 font-semibold";
+                  else if (log.content.includes("[TEACHER_UI_UPDATED]")) colorClass = "text-purple-600 dark:text-purple-400 animate-pulse";
+                  else if (log.content.includes("[HEARTBEAT]")) colorClass = "text-slate-400 dark:text-slate-500";
                   
                   return (
                     <div key={log.id} className="flex gap-2 leading-relaxed">
-                      <span className="text-slate-600 select-none shrink-0">[{log.timestamp}]</span>
+                      <span className="text-muted-foreground/60 select-none shrink-0">[{log.timestamp}]</span>
                       <span className={`${colorClass} whitespace-pre-wrap`}>{log.content}</span>
                     </div>
                   );
                 })}
                 {logs.length === 0 && (
-                  <div className="h-full flex items-center justify-center text-slate-600 italic select-none">
+                  <div className="h-full flex items-center justify-center text-muted-foreground/60 italic select-none">
                     No diagnostics captured. Trigger student events to verify the event chain.
                   </div>
                 )}

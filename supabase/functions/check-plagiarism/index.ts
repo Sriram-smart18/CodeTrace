@@ -2,22 +2,17 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
-  callGroqChatCompletion,
-  isGroqConfigured,
+  callOpenRouterChatCompletion,
+  isOpenRouterConfigured,
   JSON_EVALUATOR_SYSTEM_PROMPT,
-  parseGroqJsonContent,
-} from "../_shared/ai-config.ts";
+  parseOpenRouterJsonContent,
+} from "../_shared/lib/ai/openrouter.ts";
+import { corsHeaders, handleOptions, jsonResponse } from "../_shared/cors.ts";
 
 declare const Deno: {
   env: {
     get(key: string): string | undefined;
   };
-};
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
 // ─── Configurable threshold ───────────────────────────────────────────────────
@@ -169,7 +164,7 @@ function getAstStructure(code: string): string {
     .replace(/#[^\n]*/g, "")         // python comments
     .replace(/"[^"]*"/g, "")         // remove strings
     .replace(/'[^']*'/g, "")         // remove strings
-    .match(/\b(if|else|elif|for|while|def|class|return|try|except|finally)\b|[{}\[\](),;]/g)
+    .match(/\b(if|else|elif|for|while|def|class|return|try|except|finally)\b|[{}[\](),;]/g)
     ?.join(" ") || "";
 }
 
@@ -220,23 +215,66 @@ function winnowingSimilarity(a: Set<number>, b: Set<number>): number {
 // ─── Main handler ─────────────────────────────────────────────────────────────
 
 serve(async (req: Request) => {
-  if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
-  }
+  const options = handleOptions(req);
+  if (options) return options;
 
   try {
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader) {
+      return jsonResponse({ error: "Missing Authorization header" }, 401);
+    }
+
+    const token = authHeader.replace("Bearer ", "");
+    const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+    const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
+
+    const isServiceCall = token === SUPABASE_SERVICE_ROLE_KEY;
+    let userRole = "service";
+    let userId = "";
+
+    if (!isServiceCall) {
+      const userSupabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+        global: { headers: { Authorization: authHeader } }
+      });
+      const { data: { user }, error: userErr } = await userSupabase.auth.getUser();
+      if (userErr || !user) {
+        return jsonResponse({ error: "Unauthorized: Invalid token" }, 401);
+      }
+      userId = user.id;
+
+      const { data: profile } = await userSupabase
+        .from("profiles")
+        .select("role")
+        .eq("user_id", user.id)
+        .single();
+
+      if (!profile || (profile.role !== "teacher" && profile.role !== "admin")) {
+        return jsonResponse({ error: "Forbidden: Teacher or Admin role required" }, 403);
+      }
+      userRole = profile.role;
+    }
+
     const { submission_id, assignment_id, student_id } = await req.json();
 
     if (!submission_id || !assignment_id || !student_id) {
-      return new Response(
-        JSON.stringify({ error: "submission_id, assignment_id, and student_id are required" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return jsonResponse({ error: "submission_id, assignment_id, and student_id are required" }, 400);
     }
 
-    const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
-    const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+    // Verify teacher owns the assignment (if not admin/service)
+    if (userRole !== "admin" && userRole !== "service" && assignment_id) {
+      const { data: assignment } = await supabase
+        .from("assignments")
+        .select("created_by")
+        .eq("id", assignment_id)
+        .single();
+
+      if (!assignment || assignment.created_by !== userId) {
+        return jsonResponse({ error: "Forbidden: You do not own this assignment" }, 403);
+      }
+    }
 
     // 1. Fetch the target submission
     const { data: target, error: targetErr } = await supabase
@@ -247,10 +285,7 @@ serve(async (req: Request) => {
 
     if (targetErr || !target?.code) {
       console.error("Target submission not found:", targetErr);
-      return new Response(JSON.stringify({ error: "Target submission not found" }), {
-        status: 404,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return jsonResponse({ error: "Target submission not found" }, 404);
     }
 
     // 2. Fetch Teacher Reference Solution
@@ -420,8 +455,8 @@ serve(async (req: Request) => {
       })
       .eq("submission_id", submission_id);
 
-    // ── Groq deep analysis when similarity threshold exceeded and Groq configured ───
-    if (highestScore >= SIMILARITY_THRESHOLD && isGroqConfigured()) {
+    // ── OpenRouter deep analysis when similarity threshold exceeded and configured ───
+    if (highestScore >= SIMILARITY_THRESHOLD && isOpenRouterConfigured()) {
       let matchCode = "";
       if (topMatch.type === 'reference' && asgn) {
         matchCode = asgn.reference_solution || "";
@@ -442,8 +477,8 @@ serve(async (req: Request) => {
           evidence: [] as string[],
         };
 
-        console.log("[check-plagiarism] calling Groq (plain JSON)");
-        const groqResult = await callGroqChatCompletion({
+        console.log("[check-plagiarism] calling OpenRouter (plain JSON)");
+        const aiResult = await callOpenRouterChatCompletion({
           messages: [
             { role: "system", content: JSON_EVALUATOR_SYSTEM_PROMPT },
             {
@@ -474,9 +509,9 @@ Return JSON in exactly this shape:
           temperature: 0.2,
         });
 
-        if (groqResult.ok) {
-          const verdict = parseGroqJsonContent(
-            groqResult.data,
+        if (aiResult.ok) {
+          const verdict = parseOpenRouterJsonContent(
+            aiResult.data,
             PLAGIARISM_FALLBACK,
             "[check-plagiarism]"
           );
@@ -501,22 +536,16 @@ Return JSON in exactly this shape:
       plagiarism_explanation: explanation,
     };
 
-    return new Response(
-      JSON.stringify({
+    return jsonResponse({
         success: true,
         highest_peer_similarity: highestScore,
         peers_compared: comparisonResults.length,
         ai_triggered: highestScore >= SIMILARITY_THRESHOLD,
         details,
         plagiarism_details: plagiarismDetails,
-      }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+      });
   } catch (e) {
     console.error("check-plagiarism error:", e);
-    return new Response(
-      JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    return jsonResponse({ error: e instanceof Error ? e.message : "Unknown error" }, 500);
   }
 });

@@ -45,6 +45,7 @@ export const ExplorerItem: React.FC<ExplorerItemProps> = React.memo(({ nodeId, d
   const openNewFileDialog = useIdeStore((state) => state.openNewFileDialog);
   const openNewFolderDialog = useIdeStore((state) => state.openNewFolderDialog);
   const openRenameDialog = useIdeStore((state) => state.openRenameDialog);
+  const isDirty = useIdeStore((state) => state.dirtyFiles[nodeId]);
 
   if (!node) return null;
 
@@ -83,7 +84,6 @@ export const ExplorerItem: React.FC<ExplorerItemProps> = React.memo(({ nodeId, d
   const isFolder = node.type === "folder";
   const isActive = activeFileId === node.id;
   const isExpanded = !!node.isExpanded;
-  const isDirty = useIdeStore((state) => state.dirtyFiles[nodeId]);
 
   return (
     <div className="w-full select-none">

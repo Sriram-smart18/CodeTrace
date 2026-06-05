@@ -6,6 +6,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Loader2 } from "lucide-react";
 import { useIdeStore } from "@/components/ide/store/ideStore";
 import { SandboxWorkspace } from "@/components/ide/SandboxWorkspace";
+import { Tables } from "@/integrations/supabase/types";
 
 export default function ProjectBuilder() {
   console.count('[PROJECT BUILDER RENDER]');
@@ -50,7 +51,7 @@ export default function ProjectBuilder() {
           }
 
           // Fetch or create assignment project
-          let { data: project, error: projFetchErr } = await supabase
+          const { data: project, error: projFetchErr } = await supabase
             .from("projects")
             .select("*")
             .eq("assignment_id", assignmentId)
@@ -60,7 +61,7 @@ export default function ProjectBuilder() {
           if (projFetchErr) throw projFetchErr;
 
           let currentProjectId = project?.id;
-          let filesList: any[] = [];
+          let filesList: Tables<"project_files">[] = [];
 
           if (!project) {
             // Create assignment sandbox template
@@ -107,7 +108,7 @@ export default function ProjectBuilder() {
             filesList = files || [];
           }
 
-          const mappedNodes = filesList.map((f: any) => ({
+          const mappedNodes = filesList.map((f: Tables<"project_files">) => ({
             id: f.id,
             name: f.name,
             type: f.type,
@@ -124,7 +125,7 @@ export default function ProjectBuilder() {
         } else {
           console.log('[SANDBOX MODE] PRACTICE');
           
-          let { data: project, error: projFetchErr } = await supabase
+          const { data: project, error: projFetchErr } = await supabase
             .from("projects")
             .select("*")
             .eq("name", "Personal Sandbox Workspace")
@@ -135,7 +136,7 @@ export default function ProjectBuilder() {
           if (projFetchErr) throw projFetchErr;
 
           let currentProjectId = project?.id;
-          let filesList: any[] = [];
+          let filesList: Tables<"project_files">[] = [];
 
           if (!project) {
             const { data: newProj, error: projErr } = await supabase
@@ -173,7 +174,7 @@ export default function ProjectBuilder() {
             filesList = files || [];
           }
 
-          const mappedNodes = filesList.map((f: any) => ({
+          const mappedNodes = filesList.map((f: Tables<"project_files">) => ({
             id: f.id,
             name: f.name,
             type: f.type,
@@ -188,7 +189,7 @@ export default function ProjectBuilder() {
           await loadProjectFromPersistence(currentProjectId);
           setProjectId(currentProjectId);
         }
-      } catch (err: any) {
+      } catch (err) {
         console.error(err);
         setError("Failed to initialize sandbox workspace.");
       } finally {
@@ -197,7 +198,7 @@ export default function ProjectBuilder() {
     };
 
     loadWorkspace();
-  }, [assignmentId, user?.id, authLoading]);
+  }, [assignmentId, user?.id, authLoading, initializeProjectStore, loadProjectFromPersistence]);
 
   if (authLoading || (user?.id && loading)) {
     return (

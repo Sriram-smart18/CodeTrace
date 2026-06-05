@@ -20,8 +20,10 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 
+import { Tables } from "@/integrations/supabase/types";
+
 export default function AdminStudents() {
-  const [students, setStudents] = useState<any[]>([]);
+  const [students, setStudents] = useState<Tables<"profiles">[]>([]);
   const [search, setSearch] = useState("");
   const { toast } = useToast();
 

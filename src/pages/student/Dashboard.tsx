@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useRef } from "react";
+import { useEffect, useState, useMemo, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { useAuth } from "@/contexts/AuthContext";
@@ -35,6 +35,7 @@ import {
 import { motion } from "framer-motion";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 import { useStudentProgressQuery } from "@/hooks/useAnalyticsQueries";
+import type { Tables } from "@/integrations/supabase/types";
 
 interface AssignmentWithClassroom {
   id: string;
@@ -48,6 +49,10 @@ interface AssignmentWithClassroom {
   classrooms: { classroom_name: string; subject_name: string; teacher_id: string } | null;
 }
 
+interface EnrichedClassroom extends Tables<"classrooms"> {
+  joined_at?: string | null;
+}
+
 export default function StudentDashboard() {
   const { profile, user } = useAuth();
   const navigate = useNavigate();
@@ -56,10 +61,10 @@ export default function StudentDashboard() {
   const { data: studentProgress } = useStudentProgressQuery(user?.id);
 
   // Primary states
-  const [classrooms, setClassrooms] = useState<any[]>([]);
+  const [classrooms, setClassrooms] = useState<EnrichedClassroom[]>([]);
   const [assignments, setAssignments] = useState<AssignmentWithClassroom[]>([]);
-  const [submissions, setSubmissions] = useState<any[]>([]);
-  const [notifications, setNotifications] = useState<any[]>([]);
+  const [submissions, setSubmissions] = useState<Tables<"submissions">[]>([]);
+  const [notifications, setNotifications] = useState<Tables<"notifications">[]>([]);
   const [teachers, setTeachers] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
 
@@ -75,7 +80,7 @@ export default function StudentDashboard() {
   const [notifPage, setNotifPage] = useState(1);
   const itemsPerPage = 5;
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     if (!user) return;
     setLoading(true);
     try {
@@ -157,7 +162,7 @@ export default function StudentDashboard() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [user]);
 
   const initializedRef = useRef(false);
 
@@ -201,7 +206,7 @@ export default function StudentDashboard() {
       initializedRef.current = false;
       realtimeManager.unsubscribeChannel(key);
     };
-  }, [user]);
+  }, [user, loadData]);
 
   const handleMarkAllRead = async () => {
     if (!user || notifications.filter(n => !n.read).length === 0) return;
@@ -893,7 +898,7 @@ export default function StudentDashboard() {
                       <ResponsiveContainer width="100%" height="100%">
                         <LineChart data={
                           Object.entries(
-                            (studentProgress.submissions || []).reduce((acc: Record<string, number>, curr: any) => {
+                            (studentProgress.submissions || []).reduce((acc: Record<string, number>, curr: Tables<"submissions">) => {
                               const d = new Date(curr.submitted_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
                               acc[d] = (acc[d] || 0) + 1;
                               return acc;
@@ -937,7 +942,7 @@ export default function StudentDashboard() {
                             paddingAngle={5}
                             dataKey="value"
                           >
-                            {studentProgress.languageDistribution.map((entry: any, index: number) => (
+                            {studentProgress.languageDistribution.map((entry: { name: string; value: number; color: string }, index: number) => (
                               <Cell key={`cell-${index}`} fill={entry.color} />
                             ))}
                           </Pie>
@@ -950,7 +955,7 @@ export default function StudentDashboard() {
                       
                       {/* Custom legend */}
                       <div className="flex flex-wrap justify-center gap-x-3 gap-y-1 mt-2 text-[10px] font-mono text-muted-foreground">
-                        {studentProgress.languageDistribution.map((item: any, idx: number) => (
+                        {studentProgress.languageDistribution.map((item: { name: string; value: number; color: string }, idx: number) => (
                           <div key={idx} className="flex items-center gap-1">
                             <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: item.color }} />
                             <span>{item.name} ({item.value})</span>

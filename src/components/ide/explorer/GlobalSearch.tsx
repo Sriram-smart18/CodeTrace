@@ -58,12 +58,12 @@ export const GlobalSearch: React.FC = () => {
       setRegexError("Regex is too long (max 80 chars)");
       return;
     }
-    if (/([\*\+\?][\*\+\?]+)/.test(q)) {
+    if (/([*+?][*+?]+)/.test(q)) {
       setRegexError("Consecutive quantifiers (*+, ++, etc.) not allowed");
       return;
     }
     // Nested repetition quantifier check (e.g. groups containing + or * followed by a quantifier)
-    if (/\([^\)]*[\*\+\?\{][^\)]*\)[\*\+\?\{]/.test(q)) {
+    if (/\([^)]*[*+?{][^)]*\)[*+?{]/.test(q)) {
       setRegexError("Nested repetition group (ReDoS hazard) rejected");
       return;
     }
@@ -140,7 +140,7 @@ export const GlobalSearch: React.FC = () => {
             // Suppress search runtime errors
           }
         } else {
-          let lineToSearch = caseSensitive ? lineText : lineText.toLowerCase();
+          const lineToSearch = caseSensitive ? lineText : lineText.toLowerCase();
           const targetQuery = caseSensitive ? q : q.toLowerCase();
           
           let startIdx = 0;

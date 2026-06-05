@@ -3,12 +3,12 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
   aiNotConfiguredMessage,
-  callGroqChatCompletion,
+  callOpenRouterChatCompletion,
   FRONTEND_AI_ERROR,
-  isGroqConfigured,
+  isOpenRouterConfigured,
   JSON_EVALUATOR_SYSTEM_PROMPT,
-  parseGroqJsonContent,
-} from "../_shared/ai-config.ts";
+  parseOpenRouterJsonContent,
+} from "../_shared/lib/ai/openrouter.ts";
 import { handleOptions, jsonResponse } from "../_shared/cors.ts";
 
 type FraudAnalysisJson = {
@@ -33,19 +33,68 @@ serve(async (req) => {
 
   try {
     console.log("[detect-fraud] request received");
-    const { student_id, assignment_id } = await req.json();
+
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader) {
+      return jsonResponse({ error: "Missing Authorization header" }, 401);
+    }
+
+    const token = authHeader.replace("Bearer ", "");
+    const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+    const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
+
+    const isServiceCall = token === SUPABASE_SERVICE_ROLE_KEY;
+    let userRole = "service";
+    let userId = "";
+
+    if (!isServiceCall) {
+      const userSupabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+        global: { headers: { Authorization: authHeader } }
+      });
+      const { data: { user }, error: userErr } = await userSupabase.auth.getUser();
+      if (userErr || !user) {
+        return jsonResponse({ error: "Unauthorized: Invalid token" }, 401);
+      }
+      userId = user.id;
+
+      const { data: profile } = await userSupabase
+        .from("profiles")
+        .select("role")
+        .eq("user_id", user.id)
+        .single();
+
+      if (!profile || (profile.role !== "teacher" && profile.role !== "admin")) {
+        return jsonResponse({ error: "Forbidden: Teacher or Admin role required" }, 403);
+      }
+      userRole = profile.role;
+    }
+
+    const body = await req.json();
+    const { student_id, assignment_id } = body;
     if (!student_id) {
       return jsonResponse({ error: "student_id is required" }, 400);
     }
 
-    const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
-    const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    if (!isGroqConfigured()) {
-      console.error("[detect-fraud] GROQ_API_KEY missing");
+    if (!isOpenRouterConfigured()) {
+      console.error("[detect-fraud] OPENROUTER_API_KEY missing");
       return jsonResponse({ error: aiNotConfiguredMessage() }, 500);
     }
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+    // Verify teacher owns the assignment (if not admin/service)
+    if (userRole !== "admin" && userRole !== "service" && assignment_id) {
+      const { data: assignment } = await supabase
+        .from("assignments")
+        .select("created_by")
+        .eq("id", assignment_id)
+        .single();
+
+      if (!assignment || assignment.created_by !== userId) {
+        return jsonResponse({ error: "Forbidden: You do not own this assignment" }, 403);
+      }
+    }
 
     const thirtyMinAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString();
     let query = supabase
@@ -122,8 +171,8 @@ serve(async (req) => {
   "indicators": ["<string>"]
 }`;
 
-    console.log("[detect-fraud] calling Groq (plain JSON)");
-    const groqResult = await callGroqChatCompletion({
+    console.log("[detect-fraud] calling OpenRouter (plain JSON)");
+    const aiResult = await callOpenRouterChatCompletion({
       messages: [
         { role: "system", content: JSON_EVALUATOR_SYSTEM_PROMPT },
         {
@@ -143,12 +192,12 @@ ${jsonSchemaPrompt}`,
       temperature: 0.2,
     });
 
-    if (!groqResult.ok) {
-      return jsonResponse({ error: groqResult.error }, 500);
+    if (!aiResult.ok) {
+      return jsonResponse({ error: aiResult.error }, 500);
     }
 
-    const analysis = parseGroqJsonContent<FraudAnalysisJson>(
-      groqResult.data,
+    const analysis = parseOpenRouterJsonContent<FraudAnalysisJson>(
+      aiResult.data,
       FRAUD_FALLBACK,
       "[detect-fraud]"
     );

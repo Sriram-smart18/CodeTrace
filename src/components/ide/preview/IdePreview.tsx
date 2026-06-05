@@ -59,6 +59,7 @@ export const IdePreview: React.FC = () => {
 
   // Re-build preview doc in-memory (READ-ONLY)
   const previewHtml = useMemo(() => {
+    void compiledProjectKey;
     try {
       const nodesById = useIdeStore.getState().nodesById;
       const filesList = Object.values(nodesById).filter((n) => n.type === "file");
@@ -157,6 +158,7 @@ export const IdePreview: React.FC = () => {
 
   // Local state to hold the debounced Object URL for the iframe
   const [iframeUrl, setIframeUrl] = useState<string | null>(null);
+  const iframeUrlRef = useRef<string | null>(null);
   const previousOutputRef = useRef<string | null>(null);
 
   // Debounce preview updates and manage ObjectURL memory lifecycle
@@ -164,7 +166,7 @@ export const IdePreview: React.FC = () => {
     console.log('[EFFECT START] IdePreview: debounce timer setup');
 
     const timer = setTimeout(() => {
-      if (previewHtml === previousOutputRef.current && iframeUrl) {
+      if (previewHtml === previousOutputRef.current && iframeUrlRef.current) {
         console.log("[IDE] preview skipped duplicate");
         return;
       }
@@ -177,7 +179,9 @@ export const IdePreview: React.FC = () => {
           URL.revokeObjectURL(prevUrl); // Total destruction of old instance
         }
         const blob = new Blob([previewHtml], { type: 'text/html' });
-        return URL.createObjectURL(blob);
+        const newUrl = URL.createObjectURL(blob);
+        iframeUrlRef.current = newUrl;
+        return newUrl;
       });
     }, 500); // 500ms debounce
 
@@ -190,11 +194,11 @@ export const IdePreview: React.FC = () => {
   // Final cleanup on unmount
   useEffect(() => {
     return () => {
-      if (iframeUrl) {
-        URL.revokeObjectURL(iframeUrl);
+      if (iframeUrlRef.current) {
+        URL.revokeObjectURL(iframeUrlRef.current);
       }
     };
-  }, [iframeUrl]);
+  }, []);
 
   // Intercept logs inside parent window with correct event listener cleanup (ONLY ONCE)
   useEffect(() => {

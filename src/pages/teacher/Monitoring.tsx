@@ -76,7 +76,7 @@ export default function TeacherMonitoring() {
         .from("assignments")
         .select("id")
         .eq("created_by", teacherUser.id);
-      const assignmentIds = myAssignments?.map((a: any) => a.id) || [];
+      const assignmentIds = myAssignments?.map((a) => a.id) || [];
 
       // Load events only for this teacher's assignments
       let evtQuery = supabase
@@ -98,14 +98,14 @@ export default function TeacherMonitoring() {
         .eq("role", "student");
       if (profiles) {
         const map: Record<string, StudentInfo> = {};
-        profiles.forEach((p: any) => { map[p.user_id] = p; });
+        profiles.forEach((p) => { map[p.user_id] = p; });
         setStudents(map);
       }
 
       const { data: asgns } = await supabase.from("assignments").select("id, title").eq("created_by", teacherUser.id);
       if (asgns) {
         const map: Record<string, string> = {};
-        asgns.forEach((a: any) => { map[a.id] = a.title; });
+        asgns.forEach((a) => { map[a.id] = a.title; });
         setAssignments(map);
       }
     };
@@ -133,7 +133,7 @@ export default function TeacherMonitoring() {
         
         if (!isMounted) return;
 
-        const teacherAssignmentIds = myAssignments?.map((a: any) => a.id) || [];
+        const teacherAssignmentIds = myAssignments?.map((a) => a.id) || [];
         const channelName = `monitoring-classroom-${teacherUser.id}`;
 
         // Subscribe to activity_events INSERT

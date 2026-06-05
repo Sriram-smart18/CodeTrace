@@ -1,8 +1,8 @@
-import { useEffect, useState, useMemo, useRef } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useState, useMemo, useRef, memo, useCallback } from "react";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
+import type { Database } from "@/integrations/supabase/types";
 import { subscriptionManager } from "@/lib/subscriptionManager";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -13,36 +13,238 @@ import {
   BookOpen, 
   FileText, 
   Activity, 
-  ShieldAlert, 
   Brain, 
   School, 
-  ArrowRight, 
   Plus, 
-  Award,
-  Calendar,
-  AlertTriangle,
-  UserCheck,
-  Code,
-  Bell
+  UserCheck, 
+  Code, 
+  Bell 
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { 
-  BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, AreaChart, Area,
-  XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer 
+  BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, 
+  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer 
 } from "recharts";
 
 interface RealtimeLog {
   id: string;
-  type: "submission" | "fraud" | "join";
+  type: "submission" | "join";
   title: string;
   message: string;
   timestamp: string;
   icon: string;
 }
 
+type Classroom = Database["public"]["Tables"]["classrooms"]["Row"];
+
+interface ClassroomPerformanceItem {
+  name: string;
+  average: number;
+}
+
+interface SubmissionTrendsItem {
+  date: string;
+  submissions: number;
+}
+
+interface LanguageDistributionItem {
+  name: string;
+  value: number;
+  color: string;
+}
+
+interface DashboardSubmission {
+  id: string;
+  assignment_id: string;
+  student_id: string;
+  status: string;
+  submitted_at: string;
+  score: number | null;
+  assignments: {
+    title: string;
+  } | null;
+}
+
+interface StudentJoinEvent {
+  id: string;
+  student_id: string;
+  classroom_id: string;
+  joined_at: string;
+  classrooms: {
+    classroom_name: string;
+  } | null;
+}
+
+interface AnalyticsData {
+  classroomPerformance: ClassroomPerformanceItem[];
+  submissionTrends: SubmissionTrendsItem[];
+  languageDistribution: LanguageDistributionItem[];
+}
+
+// stand-alone sub-components to prevent unnecessary chart and list re-renders
+const ClassroomPerformanceChart = memo(({ data }: { data: ClassroomPerformanceItem[] }) => {
+  return (
+    <Card className="glass-panel">
+      <CardHeader>
+        <CardTitle className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Classroom Performance Average (%)</CardTitle>
+      </CardHeader>
+      <CardContent>
+        {data.length > 0 ? (
+          <div className="h-[240px] w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={data}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.03)" vertical={false} />
+                <XAxis dataKey="name" stroke="#6b7280" fontSize={10} tickLine={false} />
+                <YAxis stroke="#6b7280" fontSize={10} tickLine={false} domain={[0, 100]} />
+                <Tooltip 
+                  contentStyle={{ backgroundColor: "#0b0f19", border: "1px solid rgba(255,255,255,0.08)", borderRadius: "8px" }}
+                  labelStyle={{ fontSize: "10px", color: "#9ca3af" }}
+                  itemStyle={{ color: "#3B82F6", fontSize: "11px" }}
+                />
+                <Bar dataKey="average" fill="#3b82f6" radius={[4, 4, 0, 0]} maxBarSize={40} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        ) : (
+          <div className="h-[240px] flex items-center justify-center text-xs text-muted-foreground font-mono">No grade data available.</div>
+        )}
+      </CardContent>
+    </Card>
+  );
+});
+ClassroomPerformanceChart.displayName = "ClassroomPerformanceChart";
+
+const SubmissionTrendsChart = memo(({ data, hasSubmissions }: { data: SubmissionTrendsItem[]; hasSubmissions: boolean }) => {
+  return (
+    <Card className="glass-panel">
+      <CardHeader>
+        <CardTitle className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Submissions Volume (Last 7 Days)</CardTitle>
+      </CardHeader>
+      <CardContent>
+        {hasSubmissions ? (
+          <div className="h-[240px] w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={data}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.03)" vertical={false} />
+                <XAxis dataKey="date" stroke="#6b7280" fontSize={10} tickLine={false} />
+                <YAxis stroke="#6b7280" fontSize={10} tickLine={false} allowDecimals={false} />
+                <Tooltip 
+                  contentStyle={{ backgroundColor: "#0b0f19", border: "1px solid rgba(255,255,255,0.08)", borderRadius: "8px" }}
+                  labelStyle={{ fontSize: "10px", color: "#9ca3af" }}
+                  itemStyle={{ color: "#10b981", fontSize: "11px" }}
+                />
+                <Line type="monotone" dataKey="submissions" stroke="#10b981" strokeWidth={2.5} dot={{ fill: "#10b981", r: 3 }} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        ) : (
+          <div className="h-[240px] flex items-center justify-center text-xs text-muted-foreground font-mono">No submissions recorded.</div>
+        )}
+      </CardContent>
+    </Card>
+  );
+});
+SubmissionTrendsChart.displayName = "SubmissionTrendsChart";
+
+const LanguageDistributionChart = memo(({ data }: { data: LanguageDistributionItem[] }) => {
+  return (
+    <Card className="glass-panel md:col-span-2">
+      <CardHeader>
+        <CardTitle className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Assigned Languages Size</CardTitle>
+      </CardHeader>
+      <CardContent className="flex flex-col items-center justify-center">
+        {data.length > 0 ? (
+          <div className="h-[240px] w-full flex items-center justify-between gap-4">
+            <div className="h-full flex-1">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={data}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={60}
+                    outerRadius={80}
+                    paddingAngle={5}
+                    dataKey="value"
+                  >
+                    {data.map((entry: LanguageDistributionItem, index: number) => (
+                      <Cell key={`cell-${index}`} fill={entry.color} />
+                    ))}
+                  </Pie>
+                  <Tooltip />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="space-y-2 shrink-0 pr-8">
+              {data.map((entry: LanguageDistributionItem) => (
+                <div key={entry.name} className="flex items-center gap-2 text-xs">
+                  <span className="h-3 w-3 rounded-full shrink-0" style={{ backgroundColor: entry.color }} />
+                  <span className="font-bold text-foreground font-mono">{entry.name}:</span>
+                  <span className="text-muted-foreground">{entry.value} assignment(s)</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div className="h-[240px] flex items-center justify-center text-xs text-muted-foreground font-mono w-full">No active languages.</div>
+        )}
+      </CardContent>
+    </Card>
+  );
+});
+LanguageDistributionChart.displayName = "LanguageDistributionChart";
+
+const RecentClassroomsList = memo(({ classrooms }: { classrooms: Classroom[] }) => {
+  return (
+    <div className="space-y-2">
+      {classrooms.map((c) => (
+        <Card
+          key={c.id}
+          className="glass-panel transition-all"
+        >
+          <CardContent className="p-4 flex items-center justify-between">
+            <div className="min-w-0 flex-1 pr-4">
+              <p className="font-bold text-sm text-foreground truncate">{c.classroom_name}</p>
+              <p className="text-xs text-muted-foreground truncate">{c.subject_name}</p>
+            </div>
+            <div className="flex items-center gap-2.5 shrink-0">
+              <span className="font-mono text-xs font-bold text-primary bg-primary/10 border border-primary/20 px-2.5 py-0.5 rounded-md">{c.classroom_code}</span>
+              <Badge variant={c.is_active ? "default" : "secondary"} className="text-[10px]">
+                {c.is_active ? "Active" : "Inactive"}
+              </Badge>
+            </div>
+          </CardContent>
+        </Card>
+      ))}
+    </div>
+  );
+});
+RecentClassroomsList.displayName = "RecentClassroomsList";
+
+const RecentSubmissionsList = memo(({ submissions }: { submissions: DashboardSubmission[] }) => {
+  return (
+    <div className="space-y-2">
+      {submissions.map((s) => (
+        <div key={s.id} className="flex items-center justify-between p-3.5 glass-panel bg-card/30 rounded-xl">
+          <div className="min-w-0 pr-4">
+            <p className="text-sm font-bold text-foreground truncate">{s.assignments?.title || "Assignment"}</p>
+            <p className="text-xs text-muted-foreground font-mono mt-0.5">{new Date(s.submitted_at).toLocaleString()}</p>
+          </div>
+          <Badge 
+            variant={s.status === "evaluated" ? "default" : s.status === "flagged" ? "destructive" : "secondary"}
+            className="capitalize text-xs font-bold shrink-0"
+          >
+            {s.status}
+          </Badge>
+        </div>
+      ))}
+    </div>
+  );
+});
+RecentSubmissionsList.displayName = "RecentSubmissionsList";
+
 export default function TeacherDashboard() {
   const { profile, user } = useAuth();
-  const navigate = useNavigate();
 
   // Primary States
   const [stats, setStats] = useState({
@@ -50,90 +252,100 @@ export default function TeacherDashboard() {
     assignments: 0,
     submissions: 0,
     enrolledStudents: 0,
-    fraudAlerts: 0,
     todaySubmissions: 0,
   });
-  const [recentClassrooms, setRecentClassrooms] = useState<any[]>([]);
-  const [recentSubmissions, setRecentSubmissions] = useState<any[]>([]);
+  const [recentClassrooms, setRecentClassrooms] = useState<Classroom[]>([]);
+  const [recentSubmissions, setRecentSubmissions] = useState<DashboardSubmission[]>([]);
   const [realtimeLogs, setRealtimeLogs] = useState<RealtimeLog[]>([]);
-  const [analyticsData, setAnalyticsData] = useState<any>({
+  const [analyticsData, setAnalyticsData] = useState<AnalyticsData>({
     classroomPerformance: [],
     submissionTrends: [],
-    languageDistribution: [],
-    riskAnalysis: []
+    languageDistribution: []
   });
   const [loading, setLoading] = useState(true);
 
   // Tab State
   const [activeTab, setActiveTab] = useState("overview");
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     if (!user) return;
     try {
-      // 1. Get teacher's classrooms
-      const { data: classrooms, count: classroomCount } = await supabase
-        .from("classrooms")
-        .select("*", { count: "exact" })
-        .eq("teacher_id", user.id)
-        .order("created_at", { ascending: false });
+      // Phase 1: Fetch classrooms and assignments in parallel to minimize Supabase roundtrips
+      const [classroomsResult, assignmentsResult] = await Promise.all([
+        supabase
+          .from("classrooms")
+          .select("*", { count: "exact" })
+          .eq("teacher_id", user.id)
+          .order("created_at", { ascending: false }),
+        supabase
+          .from("assignments")
+          .select("*", { count: "exact" })
+          .eq("created_by", user.id)
+      ]);
 
+      const classrooms = classroomsResult.data;
+      const classroomCount = classroomsResult.count;
       const classroomIds = classrooms?.map(c => c.id) || [];
       setRecentClassrooms((classrooms ?? []).slice(0, 3));
 
-      // 2. Get teacher's assignments
-      const { data: assignments, count: assignmentCount } = await supabase
-        .from("assignments")
-        .select("*", { count: "exact" })
-        .eq("created_by", user.id);
-
+      const assignments = assignmentsResult.data;
+      const assignmentCount = assignmentsResult.count;
       const assignmentIds = assignments?.map((a) => a.id) || [];
 
       let submissionCount = 0;
       let todayCount = 0;
-      let alertCount = 0;
-      let recentSubs: any[] = [];
-      let fraudRecords: any[] = [];
+      let recentSubs: DashboardSubmission[] = [];
+      let enrolledCount = 0;
+      let studentJoins: StudentJoinEvent[] = [];
 
-      // 3. Submissions and fraud counts
+      // Phase 2: Fetch submissions and student enrollments in parallel
+      const queries: PromiseLike<{ data: unknown; count: number | null }>[] = [];
+
       if (assignmentIds.length > 0) {
-        // Submissions count
-        const { data: subs, count: subCount } = await supabase
-          .from("submissions")
-          .select("*, assignments(title)")
-          .in("assignment_id", assignmentIds)
-          .order("submitted_at", { ascending: false });
-        
-        submissionCount = subCount ?? 0;
-        recentSubs = (subs ?? []).slice(0, 5);
-
-        // Submissions today
-        const todayStr = new Date().toDateString();
-        todayCount = subs?.filter(s => new Date(s.submitted_at).toDateString() === todayStr).length ?? 0;
-
-        // Fraud alerts
-        const { data: alerts, count: alertsCount } = await supabase
-          .from("fraud_alerts")
-          .select("*, assignments(title)")
-          .in("assignment_id", assignmentIds)
-          .eq("dismissed", false);
-        
-        alertCount = alertsCount ?? 0;
-        fraudRecords = alerts ?? [];
+        queries.push(
+          supabase
+            .from("submissions")
+            .select("*, assignments(title)")
+            .in("assignment_id", assignmentIds)
+            .order("submitted_at", { ascending: false })
+        );
+      } else {
+        queries.push(Promise.resolve({ data: null, count: 0 }));
       }
 
-      // 4. Count enrolled students
-      let enrolledCount = 0;
-      let studentJoins: any[] = [];
       if (classroomIds.length > 0) {
-        const { data: enrolledStudentsList, count } = await supabase
-          .from("classroom_students")
-          .select("*, classrooms(classroom_name)")
-          .in("classroom_id", classroomIds)
-          .eq("is_active", true)
-          .is("deleted_at", null)
-          .order("joined_at", { ascending: false });
-        
-        enrolledCount = count ?? 0;
+        queries.push(
+          supabase
+            .from("classroom_students")
+            .select("*, classrooms(classroom_name)")
+            .in("classroom_id", classroomIds)
+            .eq("is_active", true)
+            .is("deleted_at", null)
+            .order("joined_at", { ascending: false })
+        );
+      } else {
+        queries.push(Promise.resolve({ data: null, count: 0 }));
+      }
+
+      const [subsResult, enrolledResult] = (await Promise.all(queries)) as [
+        { data: DashboardSubmission[] | null; count: number | null },
+        { data: StudentJoinEvent[] | null; count: number | null }
+      ];
+
+      if (assignmentIds.length > 0 && subsResult?.data) {
+        const subs = subsResult.data;
+        const subCount = subsResult.count;
+        submissionCount = subCount ?? subs.length ?? 0;
+        recentSubs = (subs ?? []).slice(0, 5);
+
+        const todayStr = new Date().toDateString();
+        todayCount = subs?.filter(s => new Date(s.submitted_at).toDateString() === todayStr).length ?? 0;
+      }
+
+      if (classroomIds.length > 0 && enrolledResult?.data) {
+        const enrolledStudentsList = enrolledResult.data;
+        const count = enrolledResult.count;
+        enrolledCount = count ?? enrolledStudentsList.length ?? 0;
         studentJoins = enrolledStudentsList ?? [];
       }
 
@@ -143,7 +355,6 @@ export default function TeacherDashboard() {
         assignments: assignmentCount ?? 0,
         submissions: submissionCount,
         enrolledStudents: enrolledCount,
-        fraudAlerts: alertCount,
         todaySubmissions: todayCount,
       });
       setRecentSubmissions(recentSubs);
@@ -160,18 +371,6 @@ export default function TeacherDashboard() {
           message: `Submission received for "${s.assignments?.title || "Assignment"}" with status ${s.status}.`,
           timestamp: s.submitted_at,
           icon: "code"
-        });
-      });
-
-      // Map fraud alerts
-      fraudRecords.slice(0, 5).forEach((f) => {
-        initialLogs.push({
-          id: f.id,
-          type: "fraud",
-          title: "Plagiarism Flagged",
-          message: `Suspicious similarity (${f.confidence_score}%) flagged on "${f.assignments?.title || "Assignment"}".`,
-          timestamp: f.created_at,
-          icon: "shield"
         });
       });
 
@@ -249,18 +448,10 @@ export default function TeacherDashboard() {
         color: COLORS[index % COLORS.length]
       }));
 
-      // D. Plagiarism/Risk distribution
-      const riskChart = [
-        { risk: 'High Plagiarism', count: fraudRecords.filter(f => f.confidence_score >= 80).length },
-        { risk: 'Medium Plagiarism', count: fraudRecords.filter(f => f.confidence_score >= 50 && f.confidence_score < 80).length },
-        { risk: 'Low Plagiarism', count: fraudRecords.filter(f => f.confidence_score < 50).length },
-      ];
-
       setAnalyticsData({
         classroomPerformance: performanceChart,
         submissionTrends: trendsChart,
-        languageDistribution: languageChart,
-        riskAnalysis: riskChart
+        languageDistribution: languageChart
       });
 
     } catch (error) {
@@ -268,7 +459,7 @@ export default function TeacherDashboard() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [user]);
 
   const initializedRef = useRef(false);
 
@@ -281,7 +472,6 @@ export default function TeacherDashboard() {
 
     const channelName = `teacher-analytics-${user.id}`;
     let unsubSubmissions = () => {};
-    let unsubFraud = () => {};
     let unsubEnrollments = () => {};
 
     // Submissions changes
@@ -316,38 +506,6 @@ export default function TeacherDashboard() {
       );
     } catch (err) {
       console.error("[Realtime] Failed to subscribe to teacher submissions telemetry:", err);
-    }
-
-    // Fraud alert changes
-    try {
-      unsubFraud = subscriptionManager.subscribe(
-        channelName,
-        "fraud_alerts",
-        "INSERT",
-        undefined,
-        async (payload) => {
-          const { data: asg } = await supabase
-            .from("assignments")
-            .select("title, created_by")
-            .eq("id", payload.new.assignment_id)
-            .single();
-
-          if (asg?.created_by === user.id) {
-            const newLog: RealtimeLog = {
-              id: payload.new.id,
-              type: "fraud",
-              title: "Plagiarism Risk Alert",
-              message: `High similarity flagged on "${asg.title}" with a confidence score of ${payload.new.confidence_score}%.`,
-              timestamp: new Date().toISOString(),
-              icon: "shield"
-            };
-            setRealtimeLogs(prev => [newLog, ...prev].slice(0, 12));
-            loadData();
-          }
-        }
-      );
-    } catch (err) {
-      console.error("[Realtime] Failed to subscribe to teacher fraud telemetry:", err);
     }
 
     // Enrollments changes
@@ -391,10 +549,9 @@ export default function TeacherDashboard() {
     return () => {
       initializedRef.current = false;
       unsubSubmissions();
-      unsubFraud();
       unsubEnrollments();
     };
-  }, [user]);
+  }, [user, loadData]);
 
   const containerVariants = {
     hidden: { opacity: 0 },
@@ -409,7 +566,6 @@ export default function TeacherDashboard() {
   const renderLogIcon = (iconType: string) => {
     switch (iconType) {
       case "code": return <Code className="h-4 w-4 text-primary" />;
-      case "shield": return <ShieldAlert className="h-4 w-4 text-red-400" />;
       case "user": return <UserCheck className="h-4 w-4 text-green-400" />;
       default: return <Bell className="h-4 w-4 text-muted-foreground" />;
     }
@@ -437,7 +593,7 @@ export default function TeacherDashboard() {
         variants={containerVariants}
       >
         {/* Title bar */}
-        <motion.div variants={itemVariants} className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-5 rounded-2xl border border-white/5 bg-white/[0.02] backdrop-blur-xl">
+        <motion.div variants={itemVariants} className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-5 rounded-2xl border border-border dark:border-white/5 bg-card/50 dark:bg-white/[0.02] backdrop-blur-xl">
           <div className="flex items-center gap-3">
             <div className="h-10 w-10 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center font-bold text-primary text-sm shadow-inner shadow-primary/20">
               CT
@@ -452,27 +608,20 @@ export default function TeacherDashboard() {
               <p className="text-xs text-muted-foreground font-mono mt-0.5">Welcome, {profile?.name}</p>
             </div>
           </div>
-          <div className="flex gap-2">
-            <Button size="sm" onClick={() => navigate("/teacher/classrooms")} className="font-semibold">
-              <Plus className="h-4 w-4 mr-2" /> New Classroom
-            </Button>
-          </div>
         </motion.div>
 
         {/* Global Statistics */}
-        <motion.div variants={itemVariants} className="grid gap-4 grid-cols-2 lg:grid-cols-6">
+        <motion.div variants={itemVariants} className="grid gap-4 grid-cols-2 lg:grid-cols-5">
           {[
-            { label: "Classrooms", value: stats.classrooms, icon: School, color: "text-purple-400", bg: "bg-purple-500/10 border-purple-500/20", link: "/teacher/classrooms" },
-            { label: "Assignments", value: stats.assignments, icon: BookOpen, color: "text-blue-400", bg: "bg-blue-500/10 border-blue-500/20", link: "/teacher/classrooms" },
-            { label: "Students Size", value: stats.enrolledStudents, icon: Users, color: "text-green-400", bg: "bg-green-500/10 border-green-500/20", link: "/teacher/classrooms" },
-            { label: "Submissions", value: stats.submissions, icon: FileText, color: "text-cyan-400", bg: "bg-cyan-500/10 border-cyan-500/20", link: "/teacher/classrooms" },
-            { label: "Submissions Today", value: stats.todaySubmissions, icon: Activity, color: "text-yellow-400", bg: "bg-yellow-500/10 border-yellow-500/20", link: "/teacher/classrooms" },
-            { label: "Pending Alerts", value: stats.fraudAlerts, icon: ShieldAlert, color: "text-red-400", bg: "bg-red-500/10 border-red-500/20", link: "/teacher/classrooms" },
+            { label: "Classrooms", value: stats.classrooms, icon: School, color: "text-purple-400", bg: "bg-purple-500/10 border-purple-500/20" },
+            { label: "Assignments", value: stats.assignments, icon: BookOpen, color: "text-blue-400", bg: "bg-blue-500/10 border-blue-500/20" },
+            { label: "Students Size", value: stats.enrolledStudents, icon: Users, color: "text-green-400", bg: "bg-green-500/10 border-green-500/20" },
+            { label: "Submissions", value: stats.submissions, icon: FileText, color: "text-cyan-400", bg: "bg-cyan-500/10 border-cyan-500/20" },
+            { label: "Submissions Today", value: stats.todaySubmissions, icon: Activity, color: "text-yellow-400", bg: "bg-yellow-500/10 border-yellow-500/20" },
           ].map((card) => (
             <Card
               key={card.label}
-              className="glass-panel hover:border-primary/30 transition-all cursor-pointer"
-              onClick={() => navigate(card.link)}
+              className="glass-panel transition-all"
             >
               <CardHeader className="flex flex-row items-center justify-between pb-2 pt-4 px-4">
                 <CardTitle className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{card.label}</CardTitle>
@@ -489,7 +638,7 @@ export default function TeacherDashboard() {
 
         {/* Dynamic Panels */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="w-full sm:w-auto bg-black/40 border border-white/10 p-1 rounded-xl">
+          <TabsList className="w-full sm:w-auto bg-muted/80 dark:bg-black/40 border border-border dark:border-white/10 p-1 rounded-xl">
             <TabsTrigger value="overview" className="rounded-lg text-xs py-2 px-4">Workspace Overview</TabsTrigger>
             <TabsTrigger value="analytics" className="rounded-lg text-xs py-2 px-4">Analytics Insights</TabsTrigger>
             <TabsTrigger value="activity_logs" className="rounded-lg text-xs py-2 px-4 flex gap-1.5 items-center">
@@ -507,40 +656,15 @@ export default function TeacherDashboard() {
                   <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
                     <School className="h-4.5 w-4.5 text-primary" /> Active Classrooms
                   </h2>
-                  <Button variant="ghost" size="sm" className="text-xs gap-1" onClick={() => navigate("/teacher/classrooms")}>
-                    See all classrooms <ArrowRight className="h-3 w-3" />
-                  </Button>
                 </div>
                 {recentClassrooms.length === 0 ? (
                   <Card className="glass-panel border-dashed border-primary/20">
                     <CardContent className="py-12 text-center">
-                      <p className="text-muted-foreground text-sm mb-3">No classrooms found.</p>
-                      <Button size="sm" onClick={() => navigate("/teacher/classrooms")}>Create Classroom</Button>
+                      <p className="text-muted-foreground text-sm">No classrooms found.</p>
                     </CardContent>
                   </Card>
                 ) : (
-                  <div className="space-y-2">
-                    {recentClassrooms.map((c) => (
-                      <Card
-                        key={c.id}
-                        className="glass-panel hover:border-white/10 hover:bg-white/[0.005] transition-all cursor-pointer"
-                        onClick={() => navigate(`/teacher/classroom/${c.id}`)}
-                      >
-                        <CardContent className="p-4 flex items-center justify-between">
-                          <div className="min-w-0 flex-1 pr-4">
-                            <p className="font-bold text-sm text-foreground truncate">{c.classroom_name}</p>
-                            <p className="text-xs text-muted-foreground truncate">{c.subject_name}</p>
-                          </div>
-                          <div className="flex items-center gap-2.5 shrink-0">
-                            <span className="font-mono text-xs font-bold text-primary bg-primary/10 border border-primary/20 px-2.5 py-0.5 rounded-md">{c.classroom_code}</span>
-                            <Badge variant={c.is_active ? "default" : "secondary"} className="text-[10px]">
-                              {c.is_active ? "Active" : "Inactive"}
-                            </Badge>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    ))}
-                  </div>
+                  <RecentClassroomsList classrooms={recentClassrooms} />
                 )}
               </motion.div>
 
@@ -558,22 +682,7 @@ export default function TeacherDashboard() {
                     </CardContent>
                   </Card>
                 ) : (
-                  <div className="space-y-2">
-                    {recentSubmissions.map((s) => (
-                      <div key={s.id} className="flex items-center justify-between p-3.5 glass-panel bg-card/30 rounded-xl">
-                        <div className="min-w-0 pr-4">
-                          <p className="text-sm font-bold text-foreground truncate">{s.assignments?.title || "Assignment"}</p>
-                          <p className="text-xs text-muted-foreground font-mono mt-0.5">{new Date(s.submitted_at).toLocaleString()}</p>
-                        </div>
-                        <Badge 
-                          variant={s.status === "evaluated" ? "default" : s.status === "flagged" ? "destructive" : "secondary"}
-                          className="capitalize text-xs font-bold shrink-0"
-                        >
-                          {s.status}
-                        </Badge>
-                      </div>
-                    ))}
-                  </div>
+                  <RecentSubmissionsList submissions={recentSubmissions} />
                 )}
               </motion.div>
             </div>
@@ -583,21 +692,19 @@ export default function TeacherDashboard() {
               <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
                 <Brain className="h-4.5 w-4.5 text-primary" /> Workspace Operations
               </h2>
-              <div className="grid gap-3 grid-cols-2 md:grid-cols-4">
+              <div className="grid gap-3 grid-cols-1 sm:grid-cols-3">
                 {[
-                  { label: "Manage Labs", icon: School, action: () => navigate("/teacher/classrooms"), color: "border-purple-500/20 hover:border-purple-500/50 hover:bg-purple-500/[0.02]" },
-                  { label: "New Classroom", icon: Plus, action: () => navigate("/teacher/classrooms"), color: "border-primary/20 hover:border-primary/50 hover:bg-primary/[0.02]" },
-                  { label: "Submissions Log", icon: FileText, action: () => navigate("/teacher/classrooms"), color: "border-cyan-500/20 hover:border-cyan-500/50 hover:bg-cyan-500/[0.02]" },
-                  { label: "Fraud Alerts", icon: ShieldAlert, action: () => navigate("/teacher/classrooms"), color: "border-red-500/20 hover:border-red-500/50 hover:bg-red-500/[0.02]" },
+                  { label: "Manage Labs", icon: School, color: "border-purple-500/20" },
+                  { label: "New Classroom", icon: Plus, color: "border-primary/20" },
+                  { label: "Submissions Log", icon: FileText, color: "border-cyan-500/20" },
                 ].map((action) => (
-                  <button
+                  <div
                     key={action.label}
-                    onClick={action.action}
                     className={`p-4 rounded-2xl border glass-panel text-left transition-all flex flex-col items-start ${action.color}`}
                   >
                     <action.icon className="h-5 w-5 text-muted-foreground mb-3" />
                     <p className="text-sm font-bold text-foreground">{action.label}</p>
-                  </button>
+                  </div>
                 ))}
               </div>
             </motion.div>
@@ -608,131 +715,13 @@ export default function TeacherDashboard() {
             <div className="grid gap-6 md:grid-cols-2">
               
               {/* Avg Grades Per Lab */}
-              <Card className="glass-panel">
-                <CardHeader>
-                  <CardTitle className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Classroom Performance Average (%)</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {analyticsData.classroomPerformance.length > 0 ? (
-                    <div className="h-[240px] w-full">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={analyticsData.classroomPerformance}>
-                          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.03)" vertical={false} />
-                          <XAxis dataKey="name" stroke="#6b7280" fontSize={10} tickLine={false} />
-                          <YAxis stroke="#6b7280" fontSize={10} tickLine={false} domain={[0, 100]} />
-                          <Tooltip 
-                            contentStyle={{ backgroundColor: "#0b0f19", border: "1px solid rgba(255,255,255,0.08)", borderRadius: "8px" }}
-                            labelStyle={{ fontSize: "10px", color: "#9ca3af" }}
-                            itemStyle={{ color: "#3B82F6", fontSize: "11px" }}
-                          />
-                          <Bar dataKey="average" fill="#3b82f6" radius={[4, 4, 0, 0]} maxBarSize={40} />
-                        </BarChart>
-                      </ResponsiveContainer>
-                    </div>
-                  ) : (
-                    <div className="h-[240px] flex items-center justify-center text-xs text-muted-foreground font-mono">No grade data available.</div>
-                  )}
-                </CardContent>
-              </Card>
+              <ClassroomPerformanceChart data={analyticsData.classroomPerformance} />
 
               {/* Submissions trends */}
-              <Card className="glass-panel">
-                <CardHeader>
-                  <CardTitle className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Submissions Volume (Last 7 Days)</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {recentSubmissions.length > 0 ? (
-                    <div className="h-[240px] w-full">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <LineChart data={analyticsData.submissionTrends}>
-                          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.03)" vertical={false} />
-                          <XAxis dataKey="date" stroke="#6b7280" fontSize={10} tickLine={false} />
-                          <YAxis stroke="#6b7280" fontSize={10} tickLine={false} allowDecimals={false} />
-                          <Tooltip 
-                            contentStyle={{ backgroundColor: "#0b0f19", border: "1px solid rgba(255,255,255,0.08)", borderRadius: "8px" }}
-                            labelStyle={{ fontSize: "10px", color: "#9ca3af" }}
-                            itemStyle={{ color: "#10b981", fontSize: "11px" }}
-                          />
-                          <Line type="monotone" dataKey="submissions" stroke="#10b981" strokeWidth={2.5} dot={{ fill: "#10b981", r: 3 }} />
-                        </LineChart>
-                      </ResponsiveContainer>
-                    </div>
-                  ) : (
-                    <div className="h-[240px] flex items-center justify-center text-xs text-muted-foreground font-mono">No submissions recorded.</div>
-                  )}
-                </CardContent>
-              </Card>
+              <SubmissionTrendsChart data={analyticsData.submissionTrends} hasSubmissions={recentSubmissions.length > 0} />
 
               {/* Languages Used distribution */}
-              <Card className="glass-panel">
-                <CardHeader>
-                  <CardTitle className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Assigned Languages Size</CardTitle>
-                </CardHeader>
-                <CardContent className="flex flex-col items-center justify-center">
-                  {analyticsData.languageDistribution.length > 0 ? (
-                    <div className="h-[240px] w-full flex items-center justify-between gap-4">
-                      <div className="h-full flex-1">
-                        <ResponsiveContainer width="100%" height="100%">
-                          <PieChart>
-                            <Pie
-                              data={analyticsData.languageDistribution}
-                              cx="50%"
-                              cy="50%"
-                              innerRadius={60}
-                              outerRadius={80}
-                              paddingAngle={5}
-                              dataKey="value"
-                            >
-                              {analyticsData.languageDistribution.map((entry: any, index: number) => (
-                                <Cell key={`cell-${index}`} fill={entry.color} />
-                              ))}
-                            </Pie>
-                            <Tooltip />
-                          </PieChart>
-                        </ResponsiveContainer>
-                      </div>
-                      <div className="space-y-2 shrink-0 pr-8">
-                        {analyticsData.languageDistribution.map((entry: any) => (
-                          <div key={entry.name} className="flex items-center gap-2 text-xs">
-                            <span className="h-3 w-3 rounded-full shrink-0" style={{ backgroundColor: entry.color }} />
-                            <span className="font-bold text-foreground font-mono">{entry.name}:</span>
-                            <span className="text-muted-foreground">{entry.value} assignment(s)</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="h-[240px] flex items-center justify-center text-xs text-muted-foreground font-mono w-full">No active languages.</div>
-                  )}
-                </CardContent>
-              </Card>
-
-              {/* Fraud Alert metrics */}
-              <Card className="glass-panel">
-                <CardHeader>
-                  <CardTitle className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Plagiarism / Similarity Risk Indicators</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {stats.fraudAlerts > 0 || analyticsData.riskAnalysis.some((r: any) => r.count > 0) ? (
-                    <div className="h-[240px] w-full">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={analyticsData.riskAnalysis} layout="vertical">
-                          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.03)" horizontal={false} />
-                          <XAxis type="number" stroke="#6b7280" fontSize={10} tickLine={false} allowDecimals={false} />
-                          <YAxis dataKey="risk" type="category" stroke="#6b7280" fontSize={9} tickLine={false} width={100} />
-                          <Tooltip 
-                            contentStyle={{ backgroundColor: "#0b0f19", border: "1px solid rgba(255,255,255,0.08)", borderRadius: "8px" }}
-                            itemStyle={{ color: "#ef4444", fontSize: "11px" }}
-                          />
-                          <Bar dataKey="count" fill="#ef4444" radius={[0, 4, 4, 0]} maxBarSize={30} />
-                        </BarChart>
-                      </ResponsiveContainer>
-                    </div>
-                  ) : (
-                    <div className="h-[240px] flex items-center justify-center text-xs text-muted-foreground font-mono">No plagiarism records generated. Perfect integrity!</div>
-                  )}
-                </CardContent>
-              </Card>
+              <LanguageDistributionChart data={analyticsData.languageDistribution} />
 
             </div>
           </TabsContent>
@@ -761,12 +750,10 @@ export default function TeacherDashboard() {
                 {realtimeLogs.map((log) => (
                   <div
                     key={log.id}
-                    className={`p-4 rounded-xl border bg-white/[0.01] border-white/5 hover:border-white/10 transition-all flex items-start gap-4 shadow-sm`}
+                    className={`p-4 rounded-xl border bg-card/20 dark:bg-white/[0.01] border-border dark:border-white/5 hover:border-border/80 dark:hover:border-white/10 transition-all flex items-start gap-4 shadow-sm`}
                   >
                     <div className={`p-2 rounded-xl mt-0.5 shrink-0 ${
-                      log.type === "fraud" 
-                        ? "bg-red-500/10 border border-red-500/20" 
-                        : log.type === "submission" 
+                      log.type === "submission" 
                         ? "bg-primary/10 border border-primary/20" 
                         : "bg-green-500/10 border border-green-500/20"
                     }`}>

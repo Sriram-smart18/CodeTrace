@@ -122,13 +122,17 @@ export const IdeTerminal = forwardRef<IdeTerminalRef, IdeTerminalProps>(({ onInp
     setTimeout(() => {
       try {
         fitAddon.fit();
-      } catch (e) {}
+      } catch (e) {
+        // Ignore fit issues when terminal element is hidden
+      }
     }, 150);
 
     const handleResize = () => {
       try {
         fitAddon.fit();
-      } catch (e) {}
+      } catch (e) {
+        // Ignore fit issues on resize before elements mount
+      }
     };
 
     window.addEventListener("resize", handleResize);
@@ -165,7 +169,7 @@ export const IdeTerminal = forwardRef<IdeTerminalRef, IdeTerminalProps>(({ onInp
       xtermRef.current = null;
       fitAddonRef.current = null;
     };
-  }, [onInput]);
+  }, [onInput, resolvedTheme]);
 
   const handleClear = () => {
     if (xtermRef.current) {

@@ -76,43 +76,16 @@ export default function StudentClassrooms() {
     if (!user || !code.trim()) return;
     setJoining(true);
     try {
-      // Find classroom by code
-      const { data: classroom, error: findErr } = await supabase
-        .from("classrooms")
-        .select("*")
-        .eq("classroom_code", code.trim().toUpperCase())
-        .eq("is_active", true)
-        .single();
-
-      if (findErr || !classroom) {
-        toast({ title: "Invalid code", description: "No active classroom found with that code.", variant: "destructive" });
-        return;
-      }
-
-      // Check if already enrolled
-      const { data: existing } = await supabase
-        .from("classroom_students")
-        .select("id")
-        .eq("classroom_id", classroom.id)
-        .eq("student_id", user.id)
-        .maybeSingle();
-
-      if (existing) {
-        toast({ title: "Already enrolled", description: `You are already in ${classroom.classroom_name}.` });
-        setOpen(false);
-        return;
-      }
-
-      // Enroll
-      const { error: enrollErr } = await supabase.from("classroom_students").insert({
-        classroom_id: classroom.id,
-        student_id: user.id,
+      // Enroll via secure RPC join_classroom
+      const { data, error: joinErr } = await supabase.rpc("join_classroom", {
+        p_classroom_code: code.trim().toUpperCase()
       });
 
-      if (enrollErr) {
-        toast({ title: "Error", description: enrollErr.message, variant: "destructive" });
+      if (joinErr) {
+        toast({ title: "Error", description: joinErr.message, variant: "destructive" });
       } else {
-        toast({ title: "Joined!", description: `Welcome to ${classroom.classroom_name}` });
+        const result = data as { id: string; classroom_name: string };
+        toast({ title: "Joined!", description: `Welcome to ${result.classroom_name}` });
         setCode("");
         setOpen(false);
         load();

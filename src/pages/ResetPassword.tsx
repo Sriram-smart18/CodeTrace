@@ -55,10 +55,11 @@ export default function ResetPassword() {
         await supabase.auth.signOut();
         navigate("/student/login");
       }
-    } catch (err: any) {
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "An unexpected error occurred.";
       toast({
         title: "Unexpected Error",
-        description: err.message || "An unexpected error occurred.",
+        description: message,
         variant: "destructive",
       });
     } finally {

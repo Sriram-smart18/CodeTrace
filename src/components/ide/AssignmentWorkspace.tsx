@@ -1,6 +1,8 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import Editor from "@monaco-editor/react";
+import type { Database, Json } from "@/integrations/supabase/types";
+import { useTheme } from "next-themes";
 import { Play, Send, ArrowLeft, Loader2, Square, Terminal as TerminalIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -13,6 +15,7 @@ import { saveQueue } from "@/utils/saveQueue";
 import { useIdeHealth } from "@/hooks/useIdeHealth";
 import { SubsystemErrorBoundary } from "./error-boundaries/SubsystemErrorBoundary";
 import { useActivityTracker } from "@/hooks/useActivityTracker";
+import { useBehavioralLogger } from "@/hooks/useBehavioralLogger";
 
 import { Terminal as XTerm } from "xterm";
 import { FitAddon } from "@xterm/addon-fit";
@@ -31,12 +34,16 @@ export const AssignmentWorkspace: React.FC<AssignmentWorkspaceProps> = ({ assign
   const navigate = useNavigate();
   const { toast } = useToast();
   const { user } = useAuth();
+  const { theme } = useTheme();
   
   const [code, setCode] = useState("");
   const [language, setLanguage] = useState("python");
   
-  const [assignment, setAssignment] = useState<any>(null);
-  const [submission, setSubmission] = useState<any>(null);
+  type Assignment = Database["public"]["Tables"]["assignments"]["Row"];
+  type Submission = Database["public"]["Tables"]["submissions"]["Row"];
+
+  const [assignment, setAssignment] = useState<Assignment | null>(null);
+  const [submission, setSubmission] = useState<Submission | null>(null);
   
   type TerminalMode = 'idle' | 'executing';
   const [execState, setExecState] = useState<TerminalMode>('idle');
@@ -51,7 +58,7 @@ export const AssignmentWorkspace: React.FC<AssignmentWorkspaceProps> = ({ assign
   const currentSessionIdRef = useRef<string | null>(null);
   const lineBufferRef = useRef<string>("");
   
-  const editorRef = useRef<any>(null);
+  const editorRef = useRef<Parameters<import("@monaco-editor/react").OnMount>[0] | null>(null);
 
   const { healthState, isOffline, isRecovering } = useIdeHealth();
 
@@ -70,7 +77,15 @@ export const AssignmentWorkspace: React.FC<AssignmentWorkspaceProps> = ({ assign
     languageRef.current = language;
   }, [language]);
 
-  const { trackTyping, trackRun, trackSubmit, trackSave } = useActivityTracker({
+  const { logChange, logPaste, getBehavioralSummary, resetLogger } = useBehavioralLogger();
+  const lastPasteRef = useRef<{ timestamp: number; chars: number }>({ timestamp: 0, chars: 0 });
+
+  // Reset logger when assignment changes
+  useEffect(() => {
+    resetLogger();
+  }, [assignmentId, resetLogger]);
+
+  const { trackTyping, trackRun, trackSubmit, trackSave, trackPaste } = useActivityTracker({
     studentId: user?.id,
     assignmentId,
     language,
@@ -95,7 +110,11 @@ export const AssignmentWorkspace: React.FC<AssignmentWorkspaceProps> = ({ assign
 
     const roomId = `room_${assignmentId}`;
     console.log("[SOCKET CONNECT] Initiating student monitoring socket connection to", EXECUTION_SERVER_URL);
-    const socket = io(EXECUTION_SERVER_URL);
+    const socket = io(EXECUTION_SERVER_URL, {
+      auth: {
+        token: session?.access_token
+      }
+    });
     monitoringSocketRef.current = socket;
 
     socket.on("connect", () => {
@@ -115,7 +134,7 @@ export const AssignmentWorkspace: React.FC<AssignmentWorkspaceProps> = ({ assign
       console.error("[SOCKET ERROR] Student monitoring connection error:", error.message);
     });
 
-    socket.on("request_code", (data: any) => {
+    socket.on("request_code", (data?: { studentId?: string }) => {
       if (!data || !data.studentId || data.studentId === user.id) {
         console.log("[SOCKET RECEIVE] Request code received from teacher. Emitting current code snapshot.");
         socket.emit("code_update", {
@@ -162,7 +181,7 @@ export const AssignmentWorkspace: React.FC<AssignmentWorkspaceProps> = ({ assign
           studentId: user.id
         });
       }
-    }, 1000); // 1s debounce to avoid flooding the socket
+    }, 500); // 500ms debounce to avoid flooding the socket
 
     return () => clearTimeout(timeout);
   }, [code, language, assignmentId, user?.id]);
@@ -206,7 +225,7 @@ export const AssignmentWorkspace: React.FC<AssignmentWorkspaceProps> = ({ assign
         }
       }
     });
-  }, [code, language, assignmentId]);
+  }, [code, language, assignmentId, trackSave]);
 
   useEffect(() => {
     const fetchAssignmentData = async () => {
@@ -261,11 +280,11 @@ export const AssignmentWorkspace: React.FC<AssignmentWorkspaceProps> = ({ assign
     fitAddonRef.current = fitAddon;
 
     setTimeout(() => {
-      try { fitAddon.fit(); } catch (e) {}
+      try { fitAddon.fit(); } catch (e) { /* ignore fit error */ }
     }, 150);
 
     const handleResize = () => {
-      try { fitAddon.fit(); } catch (e) {}
+      try { fitAddon.fit(); } catch (e) { /* ignore fit error */ }
     };
     window.addEventListener("resize", handleResize);
 
@@ -313,7 +332,7 @@ export const AssignmentWorkspace: React.FC<AssignmentWorkspaceProps> = ({ assign
     };
   }, []);
 
-  const handleRunCode = () => {
+  const handleRunCode = useCallback(() => {
     if (execState === 'executing') return;
     
     lineBufferRef.current = "";
@@ -323,12 +342,23 @@ export const AssignmentWorkspace: React.FC<AssignmentWorkspaceProps> = ({ assign
     }
 
     setExecState('executing');
-    trackRun(code);
+    
+    const summary = getBehavioralSummary();
+    const pasteSnapshot = {
+      pasteCount: summary.paste_count,
+      totalPastedChars: summary.total_pasted_chars,
+      totalPastedLines: summary.total_pasted_lines,
+    };
+    trackRun(code, pasteSnapshot);
     
     const sessionId = crypto.randomUUID();
     currentSessionIdRef.current = sessionId;
 
-    const socket = io(EXECUTION_SERVER_URL);
+    const socket = io(EXECUTION_SERVER_URL, {
+      auth: {
+        token: session?.access_token
+      }
+    });
     socketRef.current = socket;
 
     socket.on("connect", () => {
@@ -374,9 +404,9 @@ export const AssignmentWorkspace: React.FC<AssignmentWorkspaceProps> = ({ assign
       socket.disconnect();
       socketRef.current = null;
     });
-  };
+  }, [code, language, execState, trackRun, getBehavioralSummary]);
 
-  const handleStopExecution = () => {
+  const handleStopExecution = useCallback(() => {
     if (socketRef.current && currentSessionIdRef.current) {
       socketRef.current.emit("stop", {
         sessionId: currentSessionIdRef.current
@@ -385,25 +415,33 @@ export const AssignmentWorkspace: React.FC<AssignmentWorkspaceProps> = ({ assign
       socketRef.current = null;
     }
     setExecState('idle');
-  };
+  }, []);
 
-  const handleSubmitAssignment = async () => {
+  const handleSubmitAssignment = useCallback(async () => {
     if (!assignmentId || !user?.id) return;
     setSubmitting(true);
     toast({ title: "Submitting...", description: "Sending code to server." });
 
     try {
+      const summary = getBehavioralSummary();
       const payload = {
         code,
         status: "submitted",
         submitted_at: new Date().toISOString(),
+        behavioral_log: summary as unknown as Json
+      };
+
+      const pasteSnapshot = {
+        pasteCount: summary.paste_count,
+        totalPastedChars: summary.total_pasted_chars,
+        totalPastedLines: summary.total_pasted_lines,
       };
 
       if (submission) {
         const { error } = await supabase.from("submissions").update(payload).eq("id", submission.id);
         if (error) throw error;
         toast({ title: "Submission Updated" });
-        trackSubmit(code);
+        trackSubmit(code, pasteSnapshot);
       } else {
         const { data, error } = await supabase.from("submissions").insert({
           assignment_id: assignmentId,
@@ -413,14 +451,15 @@ export const AssignmentWorkspace: React.FC<AssignmentWorkspaceProps> = ({ assign
         if (error) throw error;
         if (data) setSubmission(data);
         toast({ title: "Code Submitted!" });
-        trackSubmit(code);
+        trackSubmit(code, pasteSnapshot);
       }
-    } catch (e: any) {
-      toast({ title: "Submission Failed", description: e.message, variant: "destructive" });
+    } catch (e) {
+      const errorMessage = e instanceof Error ? e.message : String(e);
+      toast({ title: "Submission Failed", description: errorMessage, variant: "destructive" });
     } finally {
       setSubmitting(false);
     }
-  };
+  }, [code, assignmentId, user?.id, submission, trackSubmit, toast, getBehavioralSummary]);
 
   return (
     <div className="h-[calc(100vh-4rem)] flex flex-col bg-[#0b0f19] select-none text-foreground font-sans">
@@ -501,14 +540,14 @@ export const AssignmentWorkspace: React.FC<AssignmentWorkspaceProps> = ({ assign
           {assignmentId && (
             <>
               <ResizablePanel defaultSize={40} minSize={20}>
-                <div className="h-full bg-[#0d1117] p-4 overflow-y-auto">
+                <div className="h-full bg-slate-50 dark:bg-[#0d1117] text-slate-900 dark:text-slate-100 p-4 overflow-y-auto">
                   <h2 className="text-lg font-bold mb-4">{assignment?.title || "Problem Statement"}</h2>
                   <div className="text-sm text-muted-foreground whitespace-pre-wrap">
                     {assignment?.description || "Loading description..."}
                   </div>
                 </div>
               </ResizablePanel>
-              <ResizableHandle className="bg-white/5 w-[1px]" />
+              <ResizableHandle className="bg-border w-[1px]" />
             </>
           )}
           
@@ -519,14 +558,71 @@ export const AssignmentWorkspace: React.FC<AssignmentWorkspaceProps> = ({ assign
                   <Editor
                     height="100%"
                     language={language}
-                    theme="vs-dark"
+                    theme={theme === "light" ? "vs" : "vs-dark"}
                     value={code}
                     onMount={(editor) => {
                       editorRef.current = editor;
+
+                      editor.onDidPaste((e) => {
+                        if (!e || !e.range) return;
+                        const model = editor.getModel();
+                        if (!model) return;
+                        
+                        const pastedText = model.getValueInRange(e.range) || "";
+                        const pastedChars = pastedText.length;
+                        const pastedLines = e.range.endLineNumber - e.range.startLineNumber + 1;
+
+                        // 1. Client-side duplicate event protection
+                        const now = Date.now();
+                        if (now - lastPasteRef.current.timestamp < 200 && lastPasteRef.current.chars === pastedChars) {
+                          console.log("[DUPLICATE PASTE BLOCKED] Duplicate paste event detected.");
+                          return;
+                        }
+                        lastPasteRef.current = { timestamp: now, chars: pastedChars };
+
+                        // 2. Log in-memory behavioral stats
+                        logPaste(pastedChars, pastedLines);
+
+                        // 3. Prepare metadata payload for live alerts & DB logs
+                        const summary = getBehavioralSummary();
+                        const fileName = (() => {
+                          switch (languageRef.current) {
+                            case "python": return "main.py";
+                            case "javascript": return "index.js";
+                            case "typescript": return "index.ts";
+                            case "java": return "Main.java";
+                            case "cpp": return "main.cpp";
+                            case "c": return "main.c";
+                            default: return `solution.${languageRef.current}`;
+                          }
+                        })();
+
+                        // Determine eventType based on paste sizes
+                        let eventType: "paste" | "large_paste" | "massive_paste" = "paste";
+                        if (pastedChars > 1000 || pastedLines > 50) {
+                          eventType = "massive_paste";
+                        } else if (pastedChars > 30 || pastedLines > 3) {
+                          eventType = "large_paste";
+                        }
+
+                        const pasteStats = {
+                          pasteCount: summary.paste_count,
+                          pastedChars,
+                          pastedLines,
+                          largestPasteChars: summary.largest_paste_size,
+                          largestPasteLines: summary.largest_paste_lines,
+                          fileName,
+                          timestamp: new Date().toISOString()
+                        };
+
+                        // 4. Emit event (inserts detailed paste log into Supabase + Socket.IO)
+                        trackPaste(JSON.stringify(pasteStats), eventType, pasteStats);
+                      });
                     }}
                     onChange={(val) => {
                       if (!isLocked) {
                         const newCode = val || "";
+                        logChange(newCode, code);
                         setCode(newCode);
                         trackTyping(newCode);
                       }

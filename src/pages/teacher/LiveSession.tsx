@@ -9,12 +9,15 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Card, CardContent } from "@/components/ui/card";
 import { ArrowLeft, Circle, Code, User, Loader2 } from "lucide-react";
 import MonacoEditor, { loader } from "@monaco-editor/react";
-import { io } from "socket.io-client";
+import { io, Socket } from "socket.io-client";
+import { useTheme } from "next-themes";
+import { useAuth } from "@/contexts/AuthContext";
 
 import type { Tables } from "@/integrations/supabase/types";
 
 type Assignment = Tables<"assignments">;
 type Profile = Tables<"profiles">;
+type Submission = Tables<"submissions">;
 
 interface ActivityEvent {
   id: string;
@@ -24,6 +27,7 @@ interface ActivityEvent {
   code_snapshot: string | null;
   language: string | null;
   created_at: string;
+  pasteStats?: Record<string, unknown> | null;
 }
 
 const LANG_MAP: Record<string, string> = {
@@ -40,14 +44,18 @@ const EXECUTION_SERVER_URL = import.meta.env.VITE_EXECUTION_SERVER_URL || "http:
 export default function TeacherLiveSession() {
   const { assignmentId } = useParams();
   const navigate = useNavigate();
+  const { theme } = useTheme();
+  const { session } = useAuth();
+  const token = session?.access_token;
+  const editorTheme = theme === "light" ? "vs" : "codetrace-dark";
   const [assignment, setAssignment] = useState<Assignment | null>(null);
   const [students, setStudents] = useState<Profile[]>([]);
   const [events, setEvents] = useState<ActivityEvent[]>([]);
-  const [submissions, setSubmissions] = useState<any[]>([]);
+  const [submissions, setSubmissions] = useState<Submission[]>([]);
   const [selectedStudent, setSelectedStudent] = useState<string | null>(null);
   const [liveCode, setLiveCode] = useState<string | null>(null);
 
-  const teacherSocketRef = useRef<any>(null);
+  const teacherSocketRef = useRef<Socket | null>(null);
   const selectedStudentRef = useRef<string | null>(null);
 
   const [socketConnected, setSocketConnected] = useState(false);
@@ -84,8 +92,8 @@ export default function TeacherLiveSession() {
       supabase.from("activity_events").select("student_id").eq("assignment_id", assignmentId),
       supabase.from("submissions").select("student_id").eq("assignment_id", assignmentId)
     ]).then(([eventsRes, subsRes]) => {
-      const idsFromEvents = eventsRes.data?.map((e: any) => e.student_id) || [];
-      const idsFromSubs = subsRes.data?.map((s: any) => s.student_id) || [];
+      const idsFromEvents = eventsRes.data?.map((e) => e.student_id) || [];
+      const idsFromSubs = subsRes.data?.map((s) => s.student_id) || [];
       const uniqueIds = [...new Set([...idsFromEvents, ...idsFromSubs])];
 
       if (uniqueIds.length > 0) {
@@ -101,7 +109,21 @@ export default function TeacherLiveSession() {
       .order("created_at", { ascending: false })
       .limit(500)
       .then(({ data }) => {
-        if (data) setEvents((data as ActivityEvent[]).reverse());
+        if (data) {
+          const loadedEvents = (data as ActivityEvent[]).map((e) => {
+            if (e.event_type === "paste" || e.event_type === "large_paste" || e.event_type === "massive_paste") {
+              try {
+                if (e.code_snapshot) {
+                  e.pasteStats = JSON.parse(e.code_snapshot);
+                }
+              } catch (err) {
+                // Ignore
+              }
+            }
+            return e;
+          });
+          setEvents(loadedEvents.reverse());
+        }
       });
   }, [assignmentId]);
 
@@ -148,6 +170,15 @@ export default function TeacherLiveSession() {
         },
         callback: (payload) => {
           const newEvent = payload.new as ActivityEvent;
+          if (newEvent.event_type === "paste" || newEvent.event_type === "large_paste" || newEvent.event_type === "massive_paste") {
+            try {
+              if (newEvent.code_snapshot) {
+                newEvent.pasteStats = JSON.parse(newEvent.code_snapshot);
+              }
+            } catch (err) {
+              // Ignore
+            }
+          }
           if (newEvent.assignment_id === assignmentId) {
             console.log(`[REALTIME_EVENT_RECEIVED] activity_event: ${newEvent.event_type} from student: ${newEvent.student_id}`);
             setLastEventName(`${newEvent.event_type} (${newEvent.student_id.slice(-8)})`);
@@ -189,7 +220,7 @@ export default function TeacherLiveSession() {
           table: "submissions",
         },
         callback: (payload) => {
-          const newSub = payload.new as any;
+          const newSub = payload.new as Submission;
           if (newSub.assignment_id === assignmentId) {
             console.log(`[REALTIME_EVENT_RECEIVED] submission: ${newSub.status} from student: ${newSub.student_id}`);
             setLastEventName(`submission: ${newSub.status} (${newSub.student_id.slice(-8)})`);
@@ -229,7 +260,11 @@ export default function TeacherLiveSession() {
 
     // 2. Socket.IO Setup
     console.log("[SOCKET CONNECT] Initiating teacher monitoring socket connection to", EXECUTION_SERVER_URL);
-    const socket = io(EXECUTION_SERVER_URL);
+    const socket = io(EXECUTION_SERVER_URL, {
+      auth: {
+        token: token
+      }
+    });
     teacherSocketRef.current = socket;
 
     socket.on("connect", () => {
@@ -254,7 +289,7 @@ export default function TeacherLiveSession() {
       setSocketConnected(false);
     });
 
-    socket.on("code_update", (data: any) => {
+    socket.on("code_update", (data: { roomId: string; code: string; language: string; studentId: string }) => {
       console.log(`[REALTIME_EVENT_RECEIVED] code_update from student: ${data.studentId}`);
       setLastEventName(`code_update (${data.studentId.slice(-8)})`);
       if (data.studentId === selectedStudentRef.current) {
@@ -263,18 +298,19 @@ export default function TeacherLiveSession() {
       }
     });
 
-    socket.on("student_activity", (data: any) => {
+    socket.on("student_activity", (data: { eventType: string; studentId: string; assignmentId: string; codeSnapshot: string | null; language: string; timestamp: string; pasteStats?: Record<string, unknown> | null }) => {
       console.log(`[REALTIME_EVENT_RECEIVED] ${data.eventType} from student: ${data.studentId}`);
       setLastEventName(`${data.eventType} (${data.studentId.slice(-8)})`);
       
-      const newEvent = {
+      const newEvent: ActivityEvent = {
         id: crypto.randomUUID(),
         student_id: data.studentId,
         assignment_id: data.assignmentId,
         event_type: data.eventType,
         code_snapshot: data.codeSnapshot,
         language: data.language,
-        created_at: data.timestamp || new Date().toISOString()
+        created_at: data.timestamp || new Date().toISOString(),
+        pasteStats: data.pasteStats
       };
 
       setEvents((prev) => {
@@ -316,7 +352,7 @@ export default function TeacherLiveSession() {
       socket.disconnect();
       teacherSocketRef.current = null;
     };
-  }, [assignmentId, realtimeVersion]);
+  }, [assignmentId, realtimeVersion, token]);
 
   // Request code snapshot on student selection change
   useEffect(() => {
@@ -370,13 +406,15 @@ export default function TeacherLiveSession() {
     return events.filter(e => e.event_type === "run").length;
   }, [events]);
 
-  const getStudentEvents = (studentId: string) =>
-    events.filter((e) => e.student_id === studentId);
+  const getStudentEvents = useCallback((studentId: string) =>
+    events.filter((e) => e.student_id === studentId), [events]);
 
   const getLatestCode = (studentId: string): string | null => {
     const studentEvents = getStudentEvents(studentId).reverse();
     for (const e of studentEvents) {
-      if (e.code_snapshot) return e.code_snapshot;
+      if (e.code_snapshot && e.event_type !== "paste" && e.event_type !== "large_paste" && e.event_type !== "massive_paste") {
+        return e.code_snapshot;
+      }
     }
     return null;
   };
@@ -386,9 +424,128 @@ export default function TeacherLiveSession() {
     return {
       typing: sEvents.filter((e) => e.event_type === "typing").length,
       runs: sEvents.filter((e) => e.event_type === "run").length,
-      pastes: sEvents.filter((e) => e.event_type === "paste").length,
+      pastes: sEvents.filter((e) => e.event_type === "paste" || e.event_type === "large_paste" || e.event_type === "massive_paste").length,
       submits: sEvents.filter((e) => e.event_type === "submit").length,
     };
+  };
+
+  const getStudentPasteStats = (studentId: string) => {
+    const sEvents = getStudentEvents(studentId);
+    const pasteEvents = sEvents.filter((e) => 
+      e.event_type === "paste" || 
+      e.event_type === "large_paste" || 
+      e.event_type === "massive_paste"
+    );
+
+    let totalPastedChars = 0;
+    let totalPastedLines = 0;
+    let largestPasteChars = 0;
+    let largestPasteLines = 0;
+    let firstPasteTime: string | null = null;
+    let lastPasteTime: string | null = null;
+
+    pasteEvents.forEach((e) => {
+      try {
+        if (e.pasteStats) {
+          const chars = Number(e.pasteStats.pastedChars) || 0;
+          const lines = Number(e.pasteStats.pastedLines) || 0;
+
+          totalPastedChars += chars;
+          totalPastedLines += lines;
+          if (chars > largestPasteChars) largestPasteChars = chars;
+          if (lines > largestPasteLines) largestPasteLines = lines;
+
+          const eventTime = e.created_at;
+          if (!firstPasteTime || new Date(eventTime) < new Date(firstPasteTime)) {
+            firstPasteTime = eventTime;
+          }
+          if (!lastPasteTime || new Date(eventTime) > new Date(lastPasteTime)) {
+            lastPasteTime = eventTime;
+          }
+        } else if (e.code_snapshot) {
+          const meta = JSON.parse(e.code_snapshot);
+          const chars = Number(meta.pastedChars) || 0;
+          const lines = Number(meta.pastedLines) || 0;
+
+          totalPastedChars += chars;
+          totalPastedLines += lines;
+          if (chars > largestPasteChars) largestPasteChars = chars;
+          if (lines > largestPasteLines) largestPasteLines = lines;
+
+          const eventTime = e.created_at;
+          if (!firstPasteTime || new Date(eventTime) < new Date(firstPasteTime)) {
+            firstPasteTime = eventTime;
+          }
+          if (!lastPasteTime || new Date(eventTime) > new Date(lastPasteTime)) {
+            lastPasteTime = eventTime;
+          }
+        }
+      } catch (err) {
+        // Fallback for raw text snapshot
+        const chars = e.code_snapshot?.length || 0;
+        const lines = e.code_snapshot?.split("\n").length || 0;
+        totalPastedChars += chars;
+        totalPastedLines += lines;
+        if (chars > largestPasteChars) largestPasteChars = chars;
+        if (lines > largestPasteLines) largestPasteLines = lines;
+        
+        const eventTime = e.created_at;
+        if (!firstPasteTime || new Date(eventTime) < new Date(firstPasteTime)) {
+          firstPasteTime = eventTime;
+        }
+        if (!lastPasteTime || new Date(eventTime) > new Date(lastPasteTime)) {
+          lastPasteTime = eventTime;
+        }
+      }
+    });
+
+    return {
+      pasteCount: pasteEvents.length,
+      totalPastedChars,
+      totalPastedLines,
+      largestPasteChars,
+      largestPasteLines,
+      firstPasteTime,
+      lastPasteTime,
+    };
+  };
+
+  const getPasteRisk = (stats: ReturnType<typeof getStudentPasteStats>, studentId: string) => {
+    if (stats.pasteCount === 0) return { label: "LOW", color: "bg-green-500/10 text-green-500 border-green-500/20" };
+
+    const sEvents = getStudentEvents(studentId);
+    const largePastes = sEvents.filter(e => e.event_type === "large_paste" || e.event_type === "massive_paste");
+    const hasRepeatedLargePastes = largePastes.length >= 2;
+
+    if (
+      stats.totalPastedChars > 1000 ||
+      stats.totalPastedLines > 50 ||
+      hasRepeatedLargePastes
+    ) {
+      return { label: "HIGH", color: "bg-red-500/10 text-red-500 border-red-500/20 animate-pulse font-extrabold" };
+    }
+    
+    if (
+      stats.pasteCount > 3 ||
+      stats.totalPastedChars > 300 ||
+      stats.totalPastedLines > 20
+    ) {
+      return { label: "MEDIUM", color: "bg-yellow-500/10 text-yellow-500 border-yellow-500/20 font-bold" };
+    }
+
+    return { label: "LOW", color: "bg-blue-500/10 text-blue-500 border-blue-500/20" };
+  };
+
+  const getCorrelationTimeline = (studentId: string) => {
+    const sEvents = getStudentEvents(studentId);
+    const filtered = sEvents.filter(e => 
+      e.event_type === "run" || 
+      e.event_type === "submit" ||
+      e.event_type === "paste" ||
+      e.event_type === "large_paste" ||
+      e.event_type === "massive_paste"
+    );
+    return [...filtered].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
   };
 
   const selectedCode = selectedStudent ? getLatestCode(selectedStudent) : null;
@@ -402,7 +559,7 @@ export default function TeacherLiveSession() {
     const lastEvent = getStudentEvents(selectedStudent).reverse().find((e) => e.language);
     const lang = lastEvent?.language || "javascript";
     return LANG_MAP[lang] || "javascript";
-  }, [selectedStudent, events]);
+  }, [selectedStudent, getStudentEvents]);
 
   return (
     <DashboardLayout role="teacher">
@@ -591,7 +748,7 @@ export default function TeacherLiveSession() {
           </div>
 
           {/* Code viewer - Monaco Editor */}
-          <div className="col-span-9 rounded-lg overflow-hidden border flex flex-col bg-[hsl(var(--terminal-bg))]">
+          <div className={`${selectedStudent ? "col-span-6" : "col-span-9"} rounded-lg overflow-hidden border flex flex-col bg-[hsl(var(--terminal-bg))]`}>
             {/* Editor tab bar */}
             <div className="flex items-center gap-1 px-2 py-1 bg-[hsl(220,25%,10%)] border-b border-[hsl(var(--terminal-border))]">
               {selectedProfile ? (
@@ -640,9 +797,9 @@ export default function TeacherLiveSession() {
                   height="100%"
                   language={monacoLanguage}
                   value={displayedCode || ""}
-                  theme="vs-dark"
+                  theme={editorTheme}
                   loading={
-                    <div className="flex items-center justify-center h-full w-full bg-[#1e1e1e]">
+                    <div className="flex items-center justify-center h-full w-full bg-slate-50 dark:bg-[#1e1e1e]">
                       <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                     </div>
                   }
@@ -689,7 +846,7 @@ export default function TeacherLiveSession() {
                     if (model) {
                       monaco.editor.setModelLanguage(model, monacoLanguage);
                     }
-                    monaco.editor.setTheme("codetrace-dark");
+                    monaco.editor.setTheme(editorTheme);
                   }}
                   options={{
                     readOnly: true,
@@ -727,6 +884,185 @@ export default function TeacherLiveSession() {
               </div>
             </div>
           </div>
+
+          {/* Column 3: Paste Monitoring & Realtime Alerts Panel */}
+          {selectedStudent && (
+            <div className="col-span-3 rounded-lg border bg-card overflow-hidden flex flex-col text-sm bg-slate-900/10 backdrop-blur-sm">
+              <div className="px-3 py-2.5 border-b bg-muted/30 flex items-center justify-between">
+                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                  Paste Telemetry & Alerts
+                </span>
+                {(() => {
+                  const stats = getStudentPasteStats(selectedStudent);
+                  const risk = getPasteRisk(stats, selectedStudent);
+                  return (
+                    <Badge variant="outline" className={`text-[9px] uppercase px-1.5 py-0.5 border ${risk.color}`}>
+                      {risk.label} RISK
+                    </Badge>
+                  );
+                })()}
+              </div>
+              
+              <ScrollArea className="flex-1 p-3">
+                <div className="space-y-4">
+                  {/* Paste Stats Summary Card */}
+                  {(() => {
+                    const stats = getStudentPasteStats(selectedStudent);
+                    return (
+                      <div className="space-y-2">
+                        <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Session Statistics</h3>
+                        <div className="grid grid-cols-2 gap-2 text-xs">
+                          <div className="bg-muted/40 p-2 rounded-lg border border-border">
+                            <div className="text-muted-foreground text-[10px]">Paste Count</div>
+                            <div className="text-lg font-bold">{stats.pasteCount}</div>
+                          </div>
+                          <div className="bg-muted/40 p-2 rounded-lg border border-border">
+                            <div className="text-muted-foreground text-[10px]">Largest Paste</div>
+                            <div className="text-lg font-bold">
+                              {stats.largestPasteLines} <span className="text-[10px] text-muted-foreground">lines</span>
+                            </div>
+                          </div>
+                          <div className="bg-muted/40 p-2 rounded-lg border border-border">
+                            <div className="text-muted-foreground text-[10px]">Total Pasted Chars</div>
+                            <div className="text-lg font-bold">{stats.totalPastedChars}</div>
+                          </div>
+                          <div className="bg-muted/40 p-2 rounded-lg border border-border">
+                            <div className="text-muted-foreground text-[10px]">Total Pasted Lines</div>
+                            <div className="text-lg font-bold">{stats.totalPastedLines}</div>
+                          </div>
+                        </div>
+                        {stats.lastPasteTime && (
+                          <div className="text-[10px] text-muted-foreground text-right mt-1">
+                            Last Paste: {new Date(stats.lastPasteTime).toLocaleTimeString()}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+
+                  {/* Realtime Alerts Feed */}
+                  {(() => {
+                    const sEvents = getStudentEvents(selectedStudent);
+                    const alerts = sEvents.filter(e => e.event_type === "large_paste" || e.event_type === "massive_paste");
+                    
+                    return (
+                      <div className="space-y-2">
+                        <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Realtime Alerts</h3>
+                        <div className="space-y-2 max-h-[140px] overflow-y-auto pr-1">
+                          {alerts.length === 0 ? (
+                            <div className="text-[11px] text-muted-foreground italic text-center py-2 bg-muted/20 border rounded-lg">
+                              No active integrity alerts
+                            </div>
+                          ) : (
+                            alerts.slice(0, 5).map((a) => {
+                              let chars = 0;
+                              let lines = 0;
+                              try {
+                                const meta = JSON.parse(a.code_snapshot || "{}");
+                                chars = meta.pastedChars || 0;
+                                lines = meta.pastedLines || 0;
+                              } catch (err) {
+                                // Ignore json parse errors for legacy data
+                              }
+                              
+                              const isMassive = a.event_type === "massive_paste";
+                              return (
+                                <div 
+                                  key={a.id} 
+                                  className={`p-2 rounded-lg border flex flex-col gap-0.5 text-xs ${
+                                    isMassive 
+                                      ? "bg-red-500/10 border-red-500/20 text-red-200" 
+                                      : "bg-amber-500/10 border-amber-500/20 text-amber-200"
+                                  }`}
+                                >
+                                  <div className="flex items-center gap-1 font-bold">
+                                    <span>{isMassive ? "🚨 MASSIVE PASTE" : "⚠ LARGE PASTE"}</span>
+                                  </div>
+                                  <div className="text-[10px] opacity-90 flex justify-between">
+                                    <span>Chars: <strong className="font-bold">{chars}</strong> · Lines: <strong className="font-bold">{lines}</strong></span>
+                                    <span>{new Date(a.created_at).toLocaleTimeString()}</span>
+                                  </div>
+                                </div>
+                              );
+                            })
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {/* Correlation Timeline */}
+                  {(() => {
+                    const timeline = getCorrelationTimeline(selectedStudent);
+                    return (
+                      <div className="space-y-2">
+                        <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Run & Submit Correlation</h3>
+                        <div className="relative border-l-2 border-muted/50 ml-2 pl-4 space-y-3 py-1 max-h-[220px] overflow-y-auto pr-1">
+                          {timeline.length === 0 ? (
+                            <div className="text-[11px] text-muted-foreground italic pl-2 py-1">
+                              No code run or submit logs
+                            </div>
+                          ) : (
+                            timeline.slice(0, 15).map((e) => {
+                              const isPaste = e.event_type === "paste" || e.event_type === "large_paste" || e.event_type === "massive_paste";
+                              let title = e.event_type.replace("_", " ").toUpperCase();
+                              let color = "text-blue-400";
+                              let details = "";
+
+                              if (isPaste) {
+                                try {
+                                  const meta = JSON.parse(e.code_snapshot || "{}");
+                                  details = `Pasted ${meta.pastedLines} lines (${meta.pastedChars} chars)`;
+                                } catch (err) {
+                                  details = `Pasted code`;
+                                }
+                                color = e.event_type === "massive_paste" ? "text-red-500" : e.event_type === "large_paste" ? "text-amber-500" : "text-blue-400";
+                              } else if (e.event_type === "run") {
+                                title = "RUN CODE";
+                                color = "text-green-400";
+                                const meta = e.pasteStats || null;
+                                if (meta) {
+                                  details = `Snapshot: ${meta.pasteCount} pastes (${meta.totalPastedChars} chars)`;
+                                }
+                              } else if (e.event_type === "submit") {
+                                title = "SUBMIT ASSIGNMENT";
+                                color = "text-primary";
+                                const meta = e.pasteStats || null;
+                                if (meta) {
+                                  details = `Snapshot: ${meta.pasteCount} pastes (${meta.totalPastedChars} chars)`;
+                                }
+                              }
+
+                              return (
+                                <div key={e.id} className="relative text-xs">
+                                  <div className={`absolute -left-[23px] top-1 w-2.5 h-2.5 rounded-full border bg-card ${
+                                    e.event_type === "submit" ? "border-primary bg-primary" :
+                                    e.event_type === "run" ? "border-green-400 bg-green-400" :
+                                    e.event_type === "massive_paste" ? "border-red-500 bg-red-500" :
+                                    e.event_type === "large_paste" ? "border-amber-500 bg-amber-500" :
+                                    "border-blue-400 bg-blue-400"
+                                  }`} />
+                                  <div className="font-semibold flex items-center justify-between">
+                                    <span className={color}>{title}</span>
+                                    <span className="text-[9px] text-muted-foreground">{new Date(e.created_at).toLocaleTimeString()}</span>
+                                  </div>
+                                  {details && (
+                                    <div className="text-[10px] text-muted-foreground mt-0.5 font-mono">
+                                      {details}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+              </ScrollArea>
+            </div>
+          )}
         </div>
       </div>
     </DashboardLayout>

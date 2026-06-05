@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Users, GraduationCap, BookOpen, FileText, ShieldAlert, Brain, Activity, UserCheck } from "lucide-react";
 import { motion } from "framer-motion";
+import type { Tables } from "@/integrations/supabase/types";
 
 interface PlatformStats {
   totalTeachers: number;
@@ -14,7 +15,7 @@ interface PlatformStats {
   totalClassrooms: number;
   totalAiEvaluations: number;
   totalPlagiarismAlerts: number;
-  recentUsers: any[];
+  recentUsers: Tables<"profiles">[];
 }
 
 export default function AdminDashboard() {

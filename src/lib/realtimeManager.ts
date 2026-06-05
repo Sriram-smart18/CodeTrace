@@ -20,7 +20,7 @@ export interface SubscribeParams {
 export type ChannelEntry = {
   channel: RealtimeChannel;
   refCount: number;
-  subscribers: Map<string, Function>;
+  subscribers: Map<string, (payload: any) => void>;
   unsubscribeTimeout?: NodeJS.Timeout;
 };
 

@@ -236,7 +236,8 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "assignments"
             referencedColumns: ["id"]
-          },
+          }
+        ]
       }
       assessment_results: {
         Row: {

@@ -93,10 +93,11 @@ export default function Profile() {
         // Fetching profile in AuthContext is already triggered by update or we can wait a bit
         setTimeout(() => window.location.reload(), 800);
       }
-    } catch (err: any) {
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "An unexpected error occurred.";
       toast({
-        title: "Unexpected Error",
-        description: err.message,
+        title: "Failed to update profile",
+        description: message,
         variant: "destructive",
       });
     } finally {
@@ -175,10 +176,11 @@ export default function Profile() {
 
       // Quick reload to propagate avatar changes to other headers/layouts
       setTimeout(() => window.location.reload(), 800);
-    } catch (err: any) {
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Could not complete image upload transaction.";
       toast({
         title: "Upload failed",
-        description: err.message || "Could not complete image upload transaction.",
+        description: message,
         variant: "destructive",
       });
     } finally {

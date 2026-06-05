@@ -43,6 +43,12 @@ import {
   Loader2
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import type { Tables } from "@/integrations/supabase/types";
+
+interface EnrichedStudent extends Tables<"profiles"> {
+  joined_at?: string;
+  enrollment_status?: string | null;
+}
 
 export default function TeacherClassroomDetail() {
   const { classroomId } = useParams();
@@ -50,9 +56,9 @@ export default function TeacherClassroomDetail() {
   const { user, profile } = useAuth();
   const { toast } = useToast();
 
-  const [classroom, setClassroom] = useState<any>(null);
-  const [students, setStudents] = useState<any[]>([]);
-  const [assignments, setAssignments] = useState<any[]>([]);
+  const [classroom, setClassroom] = useState<Tables<"classrooms"> | null>(null);
+  const [students, setStudents] = useState<EnrichedStudent[]>([]);
+  const [assignments, setAssignments] = useState<Tables<"assignments">[]>([]);
 
   // New assignment form
   const [open, setOpen] = useState(false);
@@ -135,8 +141,8 @@ export default function TeacherClassroomDetail() {
         title: "Classroom Rejudged!", 
         description: `Successfully re-evaluated ${successCount} submissions, ${failCount} failed.` 
       });
-    } catch (err: any) {
-      toast({ title: "Rejudge Failed", description: err.message, variant: "destructive" });
+    } catch (err) {
+      toast({ title: "Rejudge Failed", description: err instanceof Error ? err.message : String(err), variant: "destructive" });
     } finally {
       setRejudgingClassroom(false);
     }
@@ -162,7 +168,7 @@ export default function TeacherClassroomDetail() {
     });
   };
 
-  const load = async () => {
+  const load = useCallback(async () => {
     if (!classroomId) return;
 
     const { data: cr } = await supabase.from("classrooms").select("*").eq("id", classroomId).single();
@@ -177,11 +183,11 @@ export default function TeacherClassroomDetail() {
       .is("deleted_at", null);
 
     if (enrollments && enrollments.length > 0) {
-      const ids = enrollments.map((e: any) => e.student_id);
+      const ids = enrollments.map((e) => e.student_id);
       const { data: profiles } = await supabase.from("profiles").select("*").in("user_id", ids);
       if (profiles) {
-        const enriched = profiles.map((p: any) => {
-          const match = enrollments.find((e: any) => e.student_id === p.user_id);
+        const enriched = profiles.map((p) => {
+          const match = enrollments.find((e) => e.student_id === p.user_id);
           return {
             ...p,
             joined_at: match?.joined_at,
@@ -201,9 +207,9 @@ export default function TeacherClassroomDetail() {
       .eq("classroom_id", classroomId)
       .order("created_at", { ascending: false });
     if (asgns) setAssignments(asgns);
-  };
+  }, [classroomId]);
 
-  useEffect(() => { load(); }, [classroomId]);
+  useEffect(() => { load(); }, [load]);
 
   const handleCreateAssignment = async () => {
     if (!user || !title.trim() || !classroomId) return;
@@ -280,8 +286,8 @@ export default function TeacherClassroomDetail() {
       setAssignedStudentIds([]);
       setOpen(false);
       load();
-    } catch (e: any) {
-      toast({ title: "Failed to create assignment", description: e.message, variant: "destructive" });
+    } catch (e) {
+      toast({ title: "Failed to create assignment", description: e instanceof Error ? e.message : String(e), variant: "destructive" });
     }
   };
 
@@ -347,8 +353,8 @@ export default function TeacherClassroomDetail() {
       toast({ title: "Student Enrolled!", description: `${profileData.name} has been enrolled.` });
       setInviteEmail("");
       load();
-    } catch (e: any) {
-      toast({ title: "Enrollment failed", description: e.message, variant: "destructive" });
+    } catch (e) {
+      toast({ title: "Enrollment failed", description: e instanceof Error ? e.message : String(e), variant: "destructive" });
     } finally {
       setInviting(false);
     }
@@ -442,8 +448,8 @@ export default function TeacherClassroomDetail() {
       setBulkInviteEmails("");
       setIsBulkOpen(false);
       load();
-    } catch (e: any) {
-      toast({ title: "Bulk invite failed", description: e.message, variant: "destructive" });
+    } catch (e) {
+      toast({ title: "Bulk invite failed", description: e instanceof Error ? e.message : String(e), variant: "destructive" });
     } finally {
       setInviting(false);
     }
@@ -498,8 +504,8 @@ export default function TeacherClassroomDetail() {
         toast({ title: `Student status updated to ${status}` });
       }
       load();
-    } catch (e: any) {
-      toast({ title: "Action failed", description: e.message, variant: "destructive" });
+    } catch (e) {
+      toast({ title: "Action failed", description: e instanceof Error ? e.message : String(e), variant: "destructive" });
     }
   };
 
@@ -509,7 +515,7 @@ export default function TeacherClassroomDetail() {
     );
   };
 
-  const handleSelectAllStudents = (currentList: any[]) => {
+  const handleSelectAllStudents = (currentList: EnrichedStudent[]) => {
     if (selectedStudents.length === currentList.length) {
       setSelectedStudents([]);
     } else {
@@ -535,8 +541,8 @@ export default function TeacherClassroomDetail() {
       toast({ title: "Bulk students removed", description: `Successfully removed ${selectedStudents.length} students.` });
       setSelectedStudents([]);
       load();
-    } catch (e: any) {
-      toast({ title: "Bulk removal failed", description: e.message, variant: "destructive" });
+    } catch (e) {
+      toast({ title: "Bulk removal failed", description: e instanceof Error ? e.message : String(e), variant: "destructive" });
     }
   };
 
@@ -689,7 +695,7 @@ export default function TeacherClassroomDetail() {
                       </div>
                       <div className="space-y-2">
                         <Label>Difficulty</Label>
-                        <Select value={difficulty} onValueChange={(v: any) => setDifficulty(v)}>
+                        <Select value={difficulty} onValueChange={(v: "Easy" | "Medium" | "Hard") => setDifficulty(v)}>
                           <SelectTrigger className="bg-background/50 border-white/10 h-9 text-xs"><SelectValue /></SelectTrigger>
                           <SelectContent>
                             <SelectItem value="Easy">🟢 Easy</SelectItem>
@@ -700,7 +706,7 @@ export default function TeacherClassroomDetail() {
                       </div>
                       <div className="space-y-2">
                         <Label>Skill Level</Label>
-                        <Select value={expectedSkillLevel} onValueChange={(v: any) => setExpectedSkillLevel(v)}>
+                        <Select value={expectedSkillLevel} onValueChange={(v: "Beginner" | "Intermediate" | "Advanced") => setExpectedSkillLevel(v)}>
                           <SelectTrigger className="bg-background/50 border-white/10 h-9 text-xs"><SelectValue /></SelectTrigger>
                           <SelectContent>
                             <SelectItem value="Beginner">Beginner</SelectItem>
@@ -714,7 +720,7 @@ export default function TeacherClassroomDetail() {
                     {/* Allocation Selector */}
                     <div className="space-y-2 border-t border-white/5 pt-3">
                       <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Assignment Visibility</Label>
-                      <Select value={assignType} onValueChange={(v: any) => setAssignType(v)}>
+                      <Select value={assignType} onValueChange={(v: "all" | "selective") => setAssignType(v)}>
                         <SelectTrigger className="w-full h-9 bg-background/50 border-white/10 text-xs">
                           <SelectValue />
                         </SelectTrigger>

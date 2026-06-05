@@ -8,15 +8,16 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Code, Calendar, Clock, CheckCircle, AlertTriangle, BookOpen } from "lucide-react";
 import { motion } from "framer-motion";
+import type { Tables } from "@/integrations/supabase/types";
 
 export default function StudentClassroomDetail() {
   const { classroomId } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
 
-  const [classroom, setClassroom] = useState<any>(null);
-  const [assignments, setAssignments] = useState<any[]>([]);
-  const [submissions, setSubmissions] = useState<any[]>([]);
+  const [classroom, setClassroom] = useState<Tables<"classrooms"> | null>(null);
+  const [assignments, setAssignments] = useState<Tables<"assignments">[]>([]);
+  const [submissions, setSubmissions] = useState<Tables<"submissions">[]>([]);
 
   useEffect(() => {
     if (!classroomId || !user) return;
@@ -32,7 +33,7 @@ export default function StudentClassroomDetail() {
       if (asgns) setAssignments(asgns);
 
       if (asgns && asgns.length > 0) {
-        const ids = asgns.map((a: any) => a.id);
+        const ids = asgns.map((a) => a.id);
         const { data: subs } = await supabase
           .from("submissions")
           .select("*")

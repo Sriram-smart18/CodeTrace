@@ -1,19 +1,17 @@
-import { useCallback, useRef } from "react";
+import { useCallback, useRef, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { Socket } from "socket.io-client";
 
 interface ActivityTrackerOptions {
   studentId: string | undefined;
   assignmentId: string | undefined;
   language: string;
-  socketRef?: React.MutableRefObject<any>;
+  socketRef?: React.MutableRefObject<Socket | null>;
 }
 
 export function useActivityTracker({ studentId, assignmentId, language, socketRef }: ActivityTrackerOptions) {
-  const lastTypingRef = useRef<number>(0);
-  const TYPING_THROTTLE_MS = 3000; // send at most one typing event per 3s
-
   const sendEvent = useCallback(
-    async (eventType: string, codeSnapshot?: string) => {
+    async (eventType: string, codeSnapshot?: string, metadata?: unknown) => {
       if (!studentId || !assignmentId) return;
 
       const payload = {
@@ -23,6 +21,7 @@ export function useActivityTracker({ studentId, assignmentId, language, socketRe
         codeSnapshot: codeSnapshot?.slice(0, 2000) || null,
         language,
         timestamp: new Date().toISOString(),
+        pasteStats: metadata || null,
       };
 
       // 1. Emit via Socket.IO (Socket.IO OR Supabase Realtime - we emit to both for maximum robustness)
@@ -50,30 +49,43 @@ export function useActivityTracker({ studentId, assignmentId, language, socketRe
         } else {
           console.error("[DB ERROR] Failed to store event:", error.message);
         }
-      } catch (err: any) {
-        console.error("[DB ERROR] Exception while storing event:", err.message);
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : String(err);
+        console.error("[DB ERROR] Exception while storing event:", errorMessage);
       }
     },
     [studentId, assignmentId, language, socketRef]
   );
 
+  const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+      }
+    };
+  }, []);
+
   const trackTyping = useCallback(
     (code: string) => {
-      const now = Date.now();
-      if (now - lastTypingRef.current < TYPING_THROTTLE_MS) return;
-      lastTypingRef.current = now;
-      sendEvent("typing", code);
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+      }
+      typingTimeoutRef.current = setTimeout(() => {
+        sendEvent("typing", code);
+      }, 500); // 500ms debounce
     },
     [sendEvent]
   );
 
   const trackRun = useCallback(
-    (code: string) => sendEvent("run", code),
+    (code: string, metadata?: unknown) => sendEvent("run", code, metadata),
     [sendEvent]
   );
 
   const trackSubmit = useCallback(
-    (code: string) => sendEvent("submit", code),
+    (code: string, metadata?: unknown) => sendEvent("submit", code, metadata),
     [sendEvent]
   );
 
@@ -83,7 +95,7 @@ export function useActivityTracker({ studentId, assignmentId, language, socketRe
   );
 
   const trackPaste = useCallback(
-    (code: string) => sendEvent("paste", code),
+    (code: string, eventType: string = "paste", metadata?: unknown) => sendEvent(eventType, code, metadata),
     [sendEvent]
   );
 

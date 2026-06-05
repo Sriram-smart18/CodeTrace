@@ -3,12 +3,12 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
   aiNotConfiguredMessage,
-  callGroqChatCompletion,
+  callOpenRouterChatCompletion,
   FRONTEND_AI_ERROR,
-  isGroqConfigured,
+  isOpenRouterConfigured,
   JSON_EVALUATOR_SYSTEM_PROMPT,
-  parseGroqJsonContent,
-} from "../_shared/ai-config.ts";
+  parseOpenRouterJsonContent,
+} from "../_shared/lib/ai/openrouter.ts";
 import { handleOptions, jsonResponse } from "../_shared/cors.ts";
 
 type EvaluationJson = {
@@ -22,6 +22,13 @@ type EvaluationJson = {
   strengths: string[];
   improvements: string[];
 };
+
+interface SubmissionTestResult {
+  passed: boolean;
+  test_cases: {
+    is_hidden: boolean;
+  } | null;
+}
 
 const EVALUATION_FALLBACK: EvaluationJson = {
   quality: {
@@ -42,6 +49,42 @@ serve(async (req: Request) => {
   try {
     console.log("[evaluate-submission] request received", req.method);
 
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader) {
+      return jsonResponse({ error: "Missing Authorization header" }, 401);
+    }
+
+    const token = authHeader.replace("Bearer ", "");
+    const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+    const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
+
+    const isServiceCall = token === SUPABASE_SERVICE_ROLE_KEY;
+    let userRole = "service";
+    let userId = "";
+
+    if (!isServiceCall) {
+      const userSupabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+        global: { headers: { Authorization: authHeader } }
+      });
+      const { data: { user }, error: userErr } = await userSupabase.auth.getUser();
+      if (userErr || !user) {
+        return jsonResponse({ error: "Unauthorized: Invalid token" }, 401);
+      }
+      userId = user.id;
+
+      const { data: profile } = await userSupabase
+        .from("profiles")
+        .select("role")
+        .eq("user_id", user.id)
+        .single();
+
+      if (!profile || (profile.role !== "teacher" && profile.role !== "admin")) {
+        return jsonResponse({ error: "Forbidden: Teacher or Admin role required" }, 403);
+      }
+      userRole = profile.role;
+    }
+
     const body = await req.json();
     const submission_id = body?.submission_id as string | undefined;
     console.log("[evaluate-submission] parsed body", { submission_id });
@@ -50,13 +93,11 @@ serve(async (req: Request) => {
       return jsonResponse({ error: "submission_id is required" }, 400);
     }
 
-    if (!isGroqConfigured()) {
-      console.error("[evaluate-submission] GROQ_API_KEY missing");
+    if (!isOpenRouterConfigured()) {
+      console.error("[evaluate-submission] OPENROUTER_API_KEY missing");
       return jsonResponse({ error: aiNotConfiguredMessage() }, 500);
     }
 
-    const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
-    const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
     const { data: submission, error: subErr } = await supabase
@@ -68,6 +109,14 @@ serve(async (req: Request) => {
     if (subErr || !submission) {
       console.error("[evaluate-submission] submission fetch failed", subErr);
       return jsonResponse({ error: "Submission not found" }, 404);
+    }
+
+    // Verify teacher owns the assignment (if not admin/service)
+    if (userRole !== "admin" && userRole !== "service") {
+      const createdBy = submission.assignments?.created_by;
+      if (createdBy !== userId) {
+        return jsonResponse({ error: "Forbidden: You do not own this assignment" }, 403);
+      }
     }
 
     console.log("[evaluate-submission] submission loaded", {
@@ -95,7 +144,7 @@ serve(async (req: Request) => {
     let hiddenTotal = 0;
 
     if (!trErr && testResults && testResults.length > 0) {
-      testResults.forEach((tr: any) => {
+      (testResults as unknown as SubmissionTestResult[]).forEach((tr) => {
         const isHidden = tr.test_cases?.is_hidden || false;
         if (isHidden) {
           hiddenTotal++;
@@ -211,8 +260,8 @@ ${code}
 
 ${jsonSchemaPrompt}`;
 
-    console.log("[evaluate-submission] calling Groq (plain JSON)");
-    const groqResult = await callGroqChatCompletion({
+    console.log("[evaluate-submission] calling OpenRouter (plain JSON)");
+    const aiResult = await callOpenRouterChatCompletion({
       messages: [
         { role: "system", content: JSON_EVALUATOR_SYSTEM_PROMPT },
         { role: "user", content: userPrompt },
@@ -221,14 +270,14 @@ ${jsonSchemaPrompt}`;
     });
 
     let rawJson: EvaluationJson;
-    if (groqResult.ok) {
-      rawJson = parseGroqJsonContent<EvaluationJson>(
-        groqResult.data,
+    if (aiResult.ok) {
+      rawJson = parseOpenRouterJsonContent<EvaluationJson>(
+        aiResult.data,
         EVALUATION_FALLBACK,
         "[evaluate-submission]"
       );
     } else {
-      console.error("[evaluate-submission] Groq failed", groqResult.status);
+      console.error("[evaluate-submission] OpenRouter failed", aiResult.status);
       rawJson = EVALUATION_FALLBACK;
     }
 
@@ -293,7 +342,7 @@ ${jsonSchemaPrompt}`;
 
     // Save to legacy ai_evaluations to avoid breaking legacy code
     const aiProb = riskLevel === "HIGH" ? 75 : riskLevel === "MEDIUM" ? 45 : 15;
-    await supabase.from("ai_evaluations").upsert(
+    const { error: aiEvalErr } = await supabase.from("ai_evaluations").upsert(
       {
         submission_id,
         assignment_id: submission.assignment_id,
@@ -310,10 +359,14 @@ ${jsonSchemaPrompt}`;
         },
         risk_level: riskLevel.toLowerCase(),
         evaluated_at: new Date().toISOString(),
-        plagiarism_details: plagiarismDetails,
+        plagiarism_indicators: plagiarismDetails,
       },
       { onConflict: "submission_id" }
     );
+
+    if (aiEvalErr) {
+      console.error("[evaluate-submission] failed to insert ai_evaluations:", aiEvalErr);
+    }
 
     // Update submissions table
     const submissionStatus = riskLevel === "HIGH" ? "flagged" : "evaluated";

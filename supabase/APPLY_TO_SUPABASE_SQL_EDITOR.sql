@@ -446,6 +446,105 @@ WHERE p.assignment_id = a.id
   AND p.reference_solution IS NOT NULL;
 
 -- ============================================================
+-- BLOCK 18: Add composite index for activity_events performance
+-- ============================================================
+
+CREATE INDEX IF NOT EXISTS idx_activity_events_assignment_created 
+ON public.activity_events(assignment_id, created_at DESC);
+
+-- ============================================================
+-- BLOCK 19: Security Hardening Policies and join_classroom RPC
+-- ============================================================
+
+-- ai_evaluations policies
+DROP POLICY IF EXISTS "Teachers can view all evaluations" ON public.ai_evaluations;
+DROP POLICY IF EXISTS "Teachers can update evaluations" ON public.ai_evaluations;
+DROP POLICY IF EXISTS "Service can insert evaluations" ON public.ai_evaluations;
+DROP POLICY IF EXISTS "Students can view own evaluations when visible" ON public.ai_evaluations;
+DROP POLICY IF EXISTS "Secure select ai_evaluations" ON public.ai_evaluations;
+DROP POLICY IF EXISTS "Secure update ai_evaluations" ON public.ai_evaluations;
+DROP POLICY IF EXISTS "Secure insert ai_evaluations" ON public.ai_evaluations;
+
+CREATE POLICY "Secure select ai_evaluations"
+  ON public.ai_evaluations FOR SELECT TO authenticated
+  USING (
+    (student_id = auth.uid() AND EXISTS (
+      SELECT 1 FROM public.assignments a
+      WHERE a.id = ai_evaluations.assignment_id AND a.results_visible = true
+    ))
+    OR EXISTS (
+      SELECT 1 FROM public.assignments a
+      WHERE a.id = assignment_id AND a.created_by = auth.uid()
+    )
+    OR public.has_role(auth.uid(), 'admin')
+  );
+
+CREATE POLICY "Secure update ai_evaluations"
+  ON public.ai_evaluations FOR UPDATE TO authenticated
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.assignments a
+      WHERE a.id = assignment_id AND a.created_by = auth.uid()
+    )
+    OR public.has_role(auth.uid(), 'admin')
+  );
+
+CREATE POLICY "Secure insert ai_evaluations"
+  ON public.ai_evaluations FOR INSERT TO authenticated
+  WITH CHECK (public.has_role(auth.uid(), 'admin'));
+
+-- activity_events policies
+DROP POLICY IF EXISTS "Teachers can view all events" ON public.activity_events;
+DROP POLICY IF EXISTS "Secure select activity_events" ON public.activity_events;
+
+CREATE POLICY "Secure select activity_events"
+  ON public.activity_events FOR SELECT TO authenticated
+  USING (
+    student_id = auth.uid()
+    OR EXISTS (
+      SELECT 1 FROM public.assignments a
+      WHERE a.id = assignment_id AND a.created_by = auth.uid()
+    )
+    OR public.has_role(auth.uid(), 'admin')
+  );
+
+-- classrooms & classroom_students enrollment policies
+DROP POLICY IF EXISTS "Anyone can view classroom by code for joining" ON public.classrooms;
+DROP POLICY IF EXISTS "Students can enroll themselves" ON public.classroom_students;
+
+CREATE OR REPLACE FUNCTION public.join_classroom(p_classroom_code text)
+RETURNS json
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_classroom_id uuid;
+  v_classroom_name text;
+BEGIN
+  SELECT id, classroom_name INTO v_classroom_id, v_classroom_name 
+  FROM public.classrooms 
+  WHERE UPPER(classroom_code) = UPPER(TRIM(p_classroom_code)) 
+    AND is_active = true;
+
+  IF v_classroom_id IS NULL THEN
+    RAISE EXCEPTION 'Invalid or inactive classroom code';
+  END IF;
+
+  INSERT INTO public.classroom_students (classroom_id, student_id)
+  VALUES (v_classroom_id, auth.uid())
+  ON CONFLICT (classroom_id, student_id) DO NOTHING;
+
+  RETURN json_build_object(
+    'id', v_classroom_id,
+    'classroom_name', v_classroom_name
+  );
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.join_classroom(text) TO authenticated;
+
+-- ============================================================
 -- VERIFICATION QUERY — Run this after to confirm success
 -- ============================================================
 

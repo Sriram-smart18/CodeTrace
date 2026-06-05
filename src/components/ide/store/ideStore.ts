@@ -162,7 +162,6 @@ const loadRunHistoryFromStorage = (): RunHistoryEntry[] => {
 
 // Auto-save debounce state
 let saveDebounceTimer: NodeJS.Timeout | null = null;
-let supabaseSyncTimer: NodeJS.Timeout | null = null;
 
 const triggerSupabaseSync = (projectId: string, get: () => any) => {
   const state = get();
@@ -716,7 +715,9 @@ export const useIdeStore = create<IdeState>()((rawSet, get) => {
           const parsed = JSON.parse(rawUser);
           userId = parsed?.currentSession?.user?.id || "anonymous";
         }
-      } catch (e) {}
+      } catch (e) {
+        // Ignore JSON parsing or token retrieval errors
+      }
 
       const logs = JSON.parse(localStorage.getItem("tracecode-audit-logs") || "[]");
       const newEntry = {

@@ -1,0 +1,138 @@
+File: C:\Users\patar\OneDrive\Desktop\Tracecode\src\components\ide\diagnostics\IdeDiagnosticsPanel.tsx
+  Line 41:55 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 42:34 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+
+File: C:\Users\patar\OneDrive\Desktop\Tracecode\src\components\ide\editor\CommandPalette.tsx
+  Line 135:38 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 169:38 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+
+File: C:\Users\patar\OneDrive\Desktop\Tracecode\src\components\ide\editor\IdeMonacoEditor.tsx
+  Line 138:21 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 249:56 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 250:41 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 324:21 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+
+File: C:\Users\patar\OneDrive\Desktop\Tracecode\src\components\ide\explorer\GlobalSearch.tsx
+  Line 73:17 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 143:15 - [prefer-const] 'lineToSearch' is never reassigned. Use 'const' instead.
+
+File: C:\Users\patar\OneDrive\Desktop\Tracecode\src\components\ide\preview\IdePreview.tsx
+  Line 9:22 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 145:17 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+
+File: C:\Users\patar\OneDrive\Desktop\Tracecode\src\components\ide\store\ideStore.ts
+  Line 49:36 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 58:41 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 70:23 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 70:31 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 165:5 - [prefer-const] 'supabaseSyncTimer' is never reassigned. Use 'const' instead.
+  Line 167:60 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 181:56 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 327:24 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 328:36 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 330:20 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 363:69 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 374:63 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 376:40 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 750:51 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+
+File: C:\Users\patar\OneDrive\Desktop\Tracecode\src\components\monitoring\FraudAlerts.tsx
+  Line 16:18 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 238:57 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+
+File: C:\Users\patar\OneDrive\Desktop\Tracecode\src\components\ui\badge.tsx
+  Line 29:17 - [react-refresh/only-export-components] Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components.
+
+File: C:\Users\patar\OneDrive\Desktop\Tracecode\src\components\ui\button.tsx
+  Line 47:18 - [react-refresh/only-export-components] Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components.
+
+File: C:\Users\patar\OneDrive\Desktop\Tracecode\src\components\ui\command.tsx
+  Line 24:11 - [@typescript-eslint/no-empty-object-type] An interface declaring no members is equivalent to its supertype.
+
+File: C:\Users\patar\OneDrive\Desktop\Tracecode\src\components\ui\form.tsx
+  Line 129:10 - [react-refresh/only-export-components] Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components.
+
+File: C:\Users\patar\OneDrive\Desktop\Tracecode\src\components\ui\navigation-menu.tsx
+  Line 111:3 - [react-refresh/only-export-components] Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components.
+
+File: C:\Users\patar\OneDrive\Desktop\Tracecode\src\components\ui\sidebar.tsx
+  Line 636:3 - [react-refresh/only-export-components] Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components.
+
+File: C:\Users\patar\OneDrive\Desktop\Tracecode\src\components\ui\sonner.tsx
+  Line 27:19 - [react-refresh/only-export-components] Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components.
+
+File: C:\Users\patar\OneDrive\Desktop\Tracecode\src\components\ui\textarea.tsx
+  Line 5:18 - [@typescript-eslint/no-empty-object-type] An interface declaring no members is equivalent to its supertype.
+
+File: C:\Users\patar\OneDrive\Desktop\Tracecode\src\components\ui\toggle.tsx
+  Line 37:18 - [react-refresh/only-export-components] Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components.
+
+File: C:\Users\patar\OneDrive\Desktop\Tracecode\src\contexts\AuthContext.tsx
+  Line 97:17 - [react-refresh/only-export-components] Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components.
+
+File: C:\Users\patar\OneDrive\Desktop\Tracecode\src\hooks\useIdeMonitoring.ts
+  Line 24:38 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 25:31 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+
+File: C:\Users\patar\OneDrive\Desktop\Tracecode\src\hooks\useWorkspaceQueries.ts
+  Line 36:17 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+
+File: C:\Users\patar\OneDrive\Desktop\Tracecode\src\lib\aiQueueService.ts
+  Line 5:24 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 127:35 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 177:19 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+
+File: C:\Users\patar\OneDrive\Desktop\Tracecode\src\lib\realtimeManager.ts
+  Line 17:23 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 23:28 - [@typescript-eslint/no-unsafe-function-type] The `Function` type accepts any function-like value.
+Prefer explicitly defining any function parameters and return type.
+  Line 148:36 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+
+File: C:\Users\patar\OneDrive\Desktop\Tracecode\src\lib\subscriptionManager.ts
+  Line 10:23 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 96:25 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+
+File: C:\Users\patar\OneDrive\Desktop\Tracecode\src\pages\teacher\MonitoringTest.tsx
+  Line 28:50 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 29:44 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 54:37 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 140:49 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 147:44 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 185:43 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 273:19 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+
+File: C:\Users\patar\OneDrive\Desktop\Tracecode\src\utils\runtimeTelemetry.ts
+  Line 4:12 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 20:59 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+
+File: C:\Users\patar\OneDrive\Desktop\Tracecode\src\utils\saveQueue.ts
+  Line 1:31 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+
+File: C:\Users\patar\OneDrive\Desktop\Tracecode\src\utils\stabilityScorecard.ts
+  Line 20:16 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+
+File: C:\Users\patar\OneDrive\Desktop\Tracecode\src\utils\stressTestMode.ts
+  Line 10:18 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+  Line 11:18 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+
+File: C:\Users\patar\OneDrive\Desktop\Tracecode\src\vite-env.d.ts
+  Line 11:31 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+
+File: C:\Users\patar\OneDrive\Desktop\Tracecode\supabase.d.ts
+  Line 7:59 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+
+File: C:\Users\patar\OneDrive\Desktop\Tracecode\supabase\functions\check-plagiarism\index.ts
+  Line 1:1 - [@typescript-eslint/ban-ts-comment] Do not use "@ts-nocheck" because it alters compilation errors.
+
+File: C:\Users\patar\OneDrive\Desktop\Tracecode\supabase\functions\detect-fraud\index.ts
+  Line 1:1 - [@typescript-eslint/ban-ts-comment] Do not use "@ts-nocheck" because it alters compilation errors.
+
+File: C:\Users\patar\OneDrive\Desktop\Tracecode\supabase\functions\evaluate-submission-tests\index.ts
+  Line 268:27 - [@typescript-eslint/no-explicit-any] Unexpected any. Specify a different type.
+
+File: C:\Users\patar\OneDrive\Desktop\Tracecode\supabase\functions\evaluate-submission\index.ts
+  Line 1:1 - [@typescript-eslint/ban-ts-comment] Do not use "@ts-nocheck" because it alters compilation errors.
+
+File: C:\Users\patar\OneDrive\Desktop\Tracecode\tailwind.config.ts
+  Line 96:13 - [@typescript-eslint/no-require-imports] A `require()` style import is forbidden.
+
