@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { renderHook, act } from "@testing-library/react";
-import { useBehavioralLogger } from "../hooks/useBehavioralLogger";
+import { useBehavioralLogger, calculateTemplateChars } from "../hooks/useBehavioralLogger";
 
 
 // Helper to mimic the proctoring UI risk level classification from LiveSession.tsx
@@ -298,6 +298,38 @@ describe("useBehavioralLogger", () => {
       expect(summary.last_paste_time).toBeNull();
       expect(summary.deletion_frequency).toBe(0);
       expect(summary.typing_speed_estimate).toBe(0);
+    });
+  });
+
+  describe("Behavioral Integrity v2.2 Telemetry", () => {
+    it("should calculate template chars accurately for multiple languages", () => {
+      // Python import templates
+      const pythonCode = "import os\nfrom datetime import datetime\nprint('hello')\nif __name__ == '__main__':\n    pass";
+      expect(calculateTemplateChars(pythonCode, "python")).toBeGreaterThan(50);
+
+      // Java import & class wrappers
+      const javaCode = "import java.util.Scanner;\npublic class Main {\n  public static void main(String[] args) {\n    Scanner sc = new Scanner(System.in);\n  }\n}";
+      expect(calculateTemplateChars(javaCode, "java")).toBeGreaterThan(50);
+    });
+
+    it("should track runs, blurs, switches, and snapshots correctly in behavioral summary", () => {
+      const { result } = renderHook(() => useBehavioralLogger());
+
+      act(() => {
+        result.current.logRun();
+        result.current.logRun();
+        result.current.logTabSwitch();
+        result.current.logWindowBlur();
+        result.current.logPaste(100, 3, 40); // 100 pasted, 40 template
+      });
+
+      const summary = result.current.getBehavioralSummary();
+      expect(summary.runCount).toBe(2);
+      expect(summary.tabSwitchCount).toBe(1);
+      expect(summary.windowBlurCount).toBe(1);
+      expect(summary.template_chars).toBe(40);
+      expect(summary.effective_pasted_chars).toBe(60);
+      expect(summary.largePasteEvents).toBe(0);
     });
   });
 });

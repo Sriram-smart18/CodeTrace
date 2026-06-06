@@ -292,37 +292,209 @@ ${jsonSchemaPrompt}`;
     const complexity = Math.min(Math.max(Number(rawJson.quality?.complexity) || 60, 0), 100);
     const qualityScore = Math.round((readability + naming + modularity + complexity) / 4);
 
-    // 4. Combined scoring
-    // Correctness = 60%, Quality = 20%, Plagiarism = 20%
-    const overallScore = Math.round((correctnessScore * 0.6) + (qualityScore * 0.2) + (plagiarismScore * 0.2));
-
-    // Determine Risk Level (LOW, MEDIUM, HIGH)
-    let riskLevel = "LOW";
-    if (plagiarismSimilarity >= 85) {
-      const astScore = plagiarismDetails.ast_similarity || 0;
-      const winnowingScore = plagiarismDetails.winnowing_similarity || 0;
-      const structuralScore = plagiarismDetails.structural_similarity || 0;
-      
-      const enginesAbove80 = 
-        (astScore >= 80 ? 1 : 0) + 
-        (winnowingScore >= 80 ? 1 : 0) + 
-        (structuralScore >= 80 ? 1 : 0);
-        
-      if (enginesAbove80 >= 2) {
-        riskLevel = "CRITICAL";
+    // 4. Combined Scoring & Behavioral Integrity Engine v2.2
+    const telemetry = submission.behavioral_log || {};
+    
+    // Telemetry fields extraction
+    const typedCharacters = Number(telemetry.typedCharacters || 0);
+    const pastedCharacters = Number(telemetry.pastedCharacters || 0);
+    const pasteEvents = Number(telemetry.pasteEvents || 0);
+    const backspaceCount = Number(telemetry.backspaceCount || 0);
+    const editCount = Number(telemetry.editCount || 0);
+    const activeCodingTime = Number(telemetry.activeCodingTime || 0); // seconds
+    const idleTime = Number(telemetry.idleTime || 0); // seconds
+    
+    const tabSwitchCount = Number(telemetry.tabSwitchCount || 0);
+    const windowBlurCount = Number(telemetry.windowBlurCount || 0);
+    const totalOutOfFocusTime = Number(telemetry.totalOutOfFocusTime || 0); // seconds
+    const largePasteEvents = Number(telemetry.largePasteEvents || 0);
+    const largestPasteSize = Number(telemetry.largestPasteSize || 0);
+    const snapshotCount = Number(telemetry.snapshotCount || 0);
+    const runCount = Number(telemetry.runCount || 0);
+    const templateChars = Number(telemetry.template_chars || 0);
+    const effectivePastedChars = Number(telemetry.effective_pasted_chars || 0);
+    
+    // Calculate submitDelayAfterLastPaste (seconds)
+    let submitDelay = telemetry.submitDelayAfterLastPaste;
+    if (submitDelay === undefined || submitDelay === null) {
+      if (telemetry.last_paste_time && submission.submitted_at) {
+        const lastPasteMs = new Date(telemetry.last_paste_time).getTime();
+        const submitMs = new Date(submission.submitted_at).getTime();
+        submitDelay = Math.max(0, Math.round((submitMs - lastPasteMs) / 1000));
       } else {
-        riskLevel = "HIGH";
+        submitDelay = null;
       }
-    } else if (plagiarismSimilarity >= 70) {
+    }
+
+    // 1. Typing Speed & Protection (Human speed = 100-400 CPM)
+    const typingMinutes = activeCodingTime / 60;
+    const typingSpeed = typingMinutes > 0 ? Math.round(typedCharacters / typingMinutes) : 0;
+    
+    let typingConsistency = 100;
+    if (typingSpeed > 400) {
+      const pasteRatioTemp = (typedCharacters + effectivePastedChars) > 0 
+        ? (effectivePastedChars / (typedCharacters + effectivePastedChars)) 
+        : 0;
+      const isCheatingSuspected = pasteRatioTemp > 0.50 || plagiarismSimilarity > 70;
+      if (isCheatingSuspected) {
+        // Fast Typist Penalty (combined with paste ratio or similarity)
+        typingConsistency = Math.max(0, 100 - ((typingSpeed - 400) / 5));
+      } else {
+        // Genuine fast typist -> Do NOT penalize!
+        typingConsistency = 100;
+      }
+    }
+
+    // Calculate Paste Ratio (effective_pasted_chars / finalCodeLength)
+    const finalCodeLength = code.length || (typedCharacters + effectivePastedChars);
+    const pasteRatio = finalCodeLength > 0 ? Math.min(1, effectivePastedChars / finalCodeLength) : 0;
+
+    // Component Scores (0-100)
+    // 1. Typing Activity (30% weight)
+    let typingScore = 100;
+    if (typedCharacters < 300) {
+      typingScore = (typedCharacters / 300) * 100;
+    }
+    typingScore = typingScore * (typingConsistency / 100);
+
+    // 2. Edit Activity (20% weight)
+    const editScore = Math.min(100, Math.round(
+      (editCount > 30 ? 70 : (editCount / 30) * 70) + 
+      (backspaceCount > 5 ? 30 : (backspaceCount / 5) * 30)
+    ));
+
+    // 3. Version Growth (15% weight)
+    const versionScore = Math.min(100, snapshotCount * 15);
+
+    // 4. Paste Behavior (15% weight)
+    const pasteScore = Math.max(0, 100 - (pasteRatio * 80) - (pasteEvents * 5) - (largePasteEvents * 20));
+
+    // 5. Focus Behavior (10% weight)
+    const totalSessionTime = activeCodingTime + idleTime || 1;
+    const outOfFocusRatio = totalOutOfFocusTime / totalSessionTime;
+    const focusScore = Math.max(0, 100 - (tabSwitchCount * 3) - (windowBlurCount * 3) - (outOfFocusRatio * 150));
+
+    // 6. Similarity Resistance (10% weight)
+    const similarityScore = 100 - plagiarismSimilarity;
+
+    // Weighted Trust Base (Total = 100%)
+    let trustScore = Math.round(
+      (typingScore * 0.30) +
+      (editScore * 0.20) +
+      (versionScore * 0.15) +
+      (pasteScore * 0.15) +
+      (focusScore * 0.10) +
+      (similarityScore * 0.10)
+    );
+
+    // Run Activity Telemetry Scoring
+    if (runCount === 0) {
+      trustScore -= 10;
+    } else if (runCount >= 3) {
+      trustScore += 10;
+    }
+
+    // Minimum Human Coding Time Caps
+    if (activeCodingTime < 30) {
+      trustScore = Math.min(trustScore, 20);
+    } else if (activeCodingTime < 60) {
+      trustScore = Math.min(trustScore, 40);
+    }
+
+    // Hard Penalties
+    const penaltiesApplied: string[] = [];
+    if (pasteRatio > 0.80) {
+      trustScore -= 40;
+      penaltiesApplied.push("PASTE_RATIO_OVER_80");
+    }
+    if (largePasteEvents > 0 && submitDelay !== null && submitDelay < 60) {
+      trustScore -= 30;
+      penaltiesApplied.push("QUICK_SUBMIT_AFTER_LARGE_PASTE");
+    }
+    if (plagiarismSimilarity > 85) {
+      trustScore -= 30;
+      penaltiesApplied.push("HIGH_SIMILARITY");
+    }
+    if (snapshotCount <= 1) {
+      trustScore -= 20;
+      penaltiesApplied.push("ONLY_ONE_SNAPSHOT");
+    }
+    if (outOfFocusRatio > 0.30) {
+      trustScore -= 15;
+      penaltiesApplied.push("OUT_OF_FOCUS_OVER_30_PERCENT");
+    }
+    if (runCount === 0) {
+      penaltiesApplied.push("NO_RUNS_BEFORE_SUBMIT");
+    }
+
+    // Clamp Trust
+    trustScore = Math.min(100, Math.max(0, Math.round(trustScore)));
+
+    // Evidence Flags
+    const possible_external_solution = largePasteEvents > 0 || pastedCharacters > 300 || largestPasteSize > 300;
+    const quick_submit_after_paste = largePasteEvents > 0 && submitDelay !== null && submitDelay < 60;
+    const high_similarity_detected = plagiarismSimilarity > 70;
+
+    // Process Score (Problem Solving Process)
+    const codingProgressScore = Math.min(100, Math.round(
+      (Math.min(5, snapshotCount) * 15) + 
+      (activeCodingTime > 120 ? 25 : (activeCodingTime / 120) * 25) + 
+      (editCount > 20 ? 30 : (editCount / 20) * 30)
+    ));
+
+    // Final Overall Score (50% Correctness, 20% Trust, 10% Process, 10% Code Quality, 10% Integrity)
+    let overallScore = Math.round(
+      (correctnessScore * 0.50) +
+      (trustScore * 0.20) +
+      (codingProgressScore * 0.10) +
+      (qualityScore * 0.10) +
+      (plagiarismScore * 0.10)
+    );
+
+    // Risk Classification v2.2
+    let riskLevel = "LOW";
+    if (plagiarismSimilarity >= 85 && trustScore < 35) {
+      riskLevel = "CRITICAL";
+    } else if (plagiarismSimilarity >= 70 || trustScore < 50) {
       riskLevel = "HIGH";
-    } else if (plagiarismSimilarity >= 40) {
+    } else if (plagiarismSimilarity >= 40 || trustScore < 60) {
       riskLevel = "MEDIUM";
     }
+
+    // Automatic Score Cap
+    if (plagiarismSimilarity >= 85 && pasteRatio >= 0.70 && trustScore < 35) {
+      riskLevel = "CRITICAL";
+      overallScore = Math.min(overallScore, 30);
+    }
+
+    // Save behavioral integrity JSON to plagiarismDetails
+    plagiarismDetails = {
+      ...plagiarismDetails,
+      behavioral_integrity: {
+        trust_score: trustScore,
+        risk_level: riskLevel,
+        paste_ratio: Number(pasteRatio.toFixed(3)),
+        typing_speed: typingSpeed,
+        snapshot_count: snapshotCount,
+        run_count: runCount,
+        tab_switches: tabSwitchCount,
+        focus_loss_seconds: totalOutOfFocusTime,
+        penalties_applied: penaltiesApplied,
+        process_score: codingProgressScore,
+        evidence: {
+          possible_external_solution,
+          quick_submit_after_paste,
+          high_similarity_detected
+        }
+      }
+    };
 
     console.log("[evaluate-submission] evaluation calculated", {
       correctnessScore,
       qualityScore,
       plagiarismScore,
+      trustScore,
+      codingProgressScore,
       overallScore,
       riskLevel
     });

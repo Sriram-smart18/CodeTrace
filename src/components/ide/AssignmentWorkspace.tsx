@@ -15,7 +15,7 @@ import { saveQueue } from "@/utils/saveQueue";
 import { useIdeHealth } from "@/hooks/useIdeHealth";
 import { SubsystemErrorBoundary } from "./error-boundaries/SubsystemErrorBoundary";
 import { useActivityTracker } from "@/hooks/useActivityTracker";
-import { useBehavioralLogger } from "@/hooks/useBehavioralLogger";
+import { useBehavioralLogger, calculateTemplateChars } from "@/hooks/useBehavioralLogger";
 
 import { Terminal as XTerm } from "xterm";
 import { FitAddon } from "@xterm/addon-fit";
@@ -77,13 +77,50 @@ export const AssignmentWorkspace: React.FC<AssignmentWorkspaceProps> = ({ assign
     languageRef.current = language;
   }, [language]);
 
-  const { logChange, logPaste, getBehavioralSummary, resetLogger } = useBehavioralLogger();
+  const { 
+    logChange, 
+    logPaste, 
+    logTabSwitch, 
+    logWindowBlur, 
+    logWindowFocus, 
+    logRun, 
+    getBehavioralSummary, 
+    resetLogger 
+  } = useBehavioralLogger();
   const lastPasteRef = useRef<{ timestamp: number; chars: number }>({ timestamp: 0, chars: 0 });
 
   // Reset logger when assignment changes
   useEffect(() => {
     resetLogger();
   }, [assignmentId, resetLogger]);
+
+  // Listen to window/tab focus changes for anti-cheating telemetry
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        logTabSwitch();
+        logWindowBlur();
+      } else {
+        logWindowFocus();
+      }
+    };
+    const handleBlur = () => {
+      logWindowBlur();
+    };
+    const handleFocus = () => {
+      logWindowFocus();
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("blur", handleBlur);
+    window.addEventListener("focus", handleFocus);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("blur", handleBlur);
+      window.removeEventListener("focus", handleFocus);
+    };
+  }, [logTabSwitch, logWindowBlur, logWindowFocus]);
 
   const { trackTyping, trackRun, trackSubmit, trackSave, trackPaste } = useActivityTracker({
     studentId: user?.id,
@@ -350,6 +387,7 @@ export const AssignmentWorkspace: React.FC<AssignmentWorkspaceProps> = ({ assign
     }
 
     setExecState('executing');
+    logRun();
     
     const summary = getBehavioralSummary();
     const pasteSnapshot = {
@@ -589,8 +627,9 @@ export const AssignmentWorkspace: React.FC<AssignmentWorkspaceProps> = ({ assign
                         }
                         lastPasteRef.current = { timestamp: now, chars: pastedChars };
 
-                        // 2. Log in-memory behavioral stats
-                        logPaste(pastedChars, pastedLines);
+                        // 2. Log in-memory behavioral stats with template checks
+                        const templateChars = calculateTemplateChars(pastedText, languageRef.current);
+                        logPaste(pastedChars, pastedLines, templateChars);
 
                         // 3. Prepare metadata payload for live alerts & DB logs
                         const summary = getBehavioralSummary();
