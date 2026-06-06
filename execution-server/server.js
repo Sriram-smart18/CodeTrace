@@ -178,6 +178,15 @@ const getExtension = (language) => {
   }
 };
 
+const getFileName = (language, code) => {
+  if (language === 'java') {
+    const match = code.match(/\bpublic\s+class\s+([A-Za-z_][A-Za-z0-9_]*)\b/);
+    const className = (match && match[1]) ? match[1] : 'Main';
+    return `${className}.java`;
+  }
+  return `prog_${uuidv4()}${getExtension(language)}`;
+};
+
 const getExecutionConfig = (language, filePath, sessionDir) => {
   switch (language) {
     case 'python':
@@ -187,13 +196,20 @@ const getExecutionConfig = (language, filePath, sessionDir) => {
       return { cmd: 'node', args: [filePath] };
 
     case 'java': {
-      const javaFile = path.join(sessionDir, 'Main.java');
-      fs.copyFileSync(filePath, javaFile);
+      const className = path.basename(filePath, '.java');
+      const fileName = path.basename(filePath);
+      
+      console.log('[JAVA EXECUTION LOG]');
+      console.log(`- Extracted class name: ${className}`);
+      console.log(`- Generated filename: ${fileName}`);
+      console.log(`- Compile command: javac ${filePath}`);
+      console.log(`- Run command: java -cp ${sessionDir} ${className}`);
+
       return {
         compileCmd: 'javac',
-        compileArgs: [javaFile],
+        compileArgs: [filePath],
         cmd: 'java',
-        args: ['-cp', sessionDir, 'Main'],
+        args: ['-cp', sessionDir, className],
       };
     }
 
@@ -508,7 +524,7 @@ io.on('connection', (socket) => {
     const sessionDir = path.join(TEMP_DIR, sessionId);
     if (!fs.existsSync(sessionDir)) fs.mkdirSync(sessionDir, { recursive: true });
 
-    const fileName = `prog_${uuidv4()}${getExtension(language)}`;
+    const fileName = getFileName(language, code);
     const filePath = path.join(sessionDir, fileName);
     fs.writeFileSync(filePath, code);
 
@@ -560,6 +576,15 @@ io.on('connection', (socket) => {
           });
           compiler.on('error', reject);
         });
+
+        if (language === 'java') {
+          const className = path.basename(filePath, '.java');
+          const classFilePath = path.join(sessionDir, `${className}.class`);
+          if (!fs.existsSync(classFilePath)) {
+            throw new Error(`Expected Java class file not found: ${className}.class`);
+          }
+        }
+
         io.to(sessionId).emit('output', `\x1b[32m✓ Compiled successfully\x1b[0m\r\n`);
       } catch (compileErr) {
         io.to(sessionId).emit('output', `\r\n\x1b[31m[Compilation Error]\x1b[0m\r\n${compileErr.message}\r\n`);
@@ -761,7 +786,7 @@ app.post('/execute', restLimiter, async (req, res) => {
   try {
     fs.mkdirSync(sessionDir, { recursive: true });
 
-    const fileName = `prog_${uuidv4()}${getExtension(language)}`;
+    const fileName = getFileName(language, code);
     const filePath = path.join(sessionDir, fileName);
     fs.writeFileSync(filePath, code);
 
@@ -789,6 +814,14 @@ app.post('/execute', restLimiter, async (req, res) => {
           });
           compiler.on('error', reject);
         });
+
+        if (language === 'java') {
+          const className = path.basename(filePath, '.java');
+          const classFilePath = path.join(sessionDir, `${className}.class`);
+          if (!fs.existsSync(classFilePath)) {
+            throw new Error(`Expected Java class file not found: ${className}.class`);
+          }
+        }
       } catch (compileErr) {
         metrics.totalCompilationFailures++;
         metrics.totalErrors++;
