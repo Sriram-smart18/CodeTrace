@@ -66,7 +66,7 @@ export const ExecutionHistoryDialog: React.FC = () => {
                       </div>
                       <div className="flex items-center gap-3 text-[10px] text-slate-400 dark:text-muted-foreground/60 leading-none">
                         <span className="flex items-center gap-1">
-                          <Clock className="h-3 w-3 shrink-0" /> {run.time}
+                          <Clock className="h-3 w-3 shrink-0" /> {run.timestamp}
                         </span>
                         <span className="font-semibold text-slate-500 dark:text-muted-foreground/80">
                           {run.durationMs}ms

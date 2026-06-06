@@ -1,5 +1,5 @@
 // File: src/components/ide/SandboxWorkspace.tsx
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import {
@@ -185,22 +185,6 @@ export const SandboxWorkspace: React.FC<SandboxWorkspaceProps> = ({
       setPaletteOpen(true);
     }
   });
-
-  // Global code rerun listener
-  useEffect(() => {
-    const handleRerunEvent = (e: Event) => {
-      const customEvent = e as CustomEvent;
-      const targetFileId = customEvent.detail?.fileId;
-      if (targetFileId) {
-        useIdeStore.getState().openFile(targetFileId);
-        setTimeout(() => {
-          handleRunCode();
-        }, 120);
-      }
-    };
-    window.addEventListener("run-code-file", handleRerunEvent);
-    return () => window.removeEventListener("run-code-file", handleRerunEvent);
-  }, [activeFileId, handleRunCode]);
 
   // Sync mode layout state on change
   useEffect(() => {
@@ -418,6 +402,22 @@ export const SandboxWorkspace: React.FC<SandboxWorkspaceProps> = ({
       }
     }
   }, [activeFileId, execState, toast, saveToSupabase, session, user, setExecState, setIdeMode]);
+
+  // Global code rerun listener
+  useEffect(() => {
+    const handleRerunEvent = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      const targetFileId = customEvent.detail?.fileId;
+      if (targetFileId) {
+        useIdeStore.getState().openFile(targetFileId);
+        setTimeout(() => {
+          handleRunCode();
+        }, 120);
+      }
+    };
+    window.addEventListener("run-code-file", handleRerunEvent);
+    return () => window.removeEventListener("run-code-file", handleRerunEvent);
+  }, [activeFileId, handleRunCode]);
 
   const handleTerminalInput = (data: string) => {
     setExecState('running');

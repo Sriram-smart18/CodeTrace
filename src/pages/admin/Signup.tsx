@@ -27,9 +27,50 @@ export default function AdminSignup() {
       return;
     }
     setLoading(true);
+    
+    console.log("[ADMIN SIGNUP] Initiating signup for admin email:", email);
     const { error } = await signUp(email, password, name, "admin");
+    
     if (error) {
-      toast({ title: "Signup failed", description: error.message, variant: "destructive" });
+      console.error("[ADMIN SIGNUP] Error returned during signup:", {
+        message: error.message,
+        status: (error as any).status,
+        code: (error as any).code
+      });
+      
+      let title = "Signup Failed";
+      let description = error.message;
+      let shouldRedirectToLogin = false;
+
+      const errorMessageLower = error.message.toLowerCase();
+      const errorCode = (error as any).code;
+      const errorStatus = (error as any).status;
+
+      if (errorCode === "user_already_exists" || errorStatus === 409 || errorMessageLower.includes("already registered") || errorMessageLower.includes("already exists")) {
+        title = "Account Already Exists";
+        description = "An admin account with this email address already exists. Redirecting to Sign In...";
+        shouldRedirectToLogin = true;
+      } else if (errorCode === "over_email_send_rate_limit" || errorStatus === 429 || errorMessageLower.includes("rate limit exceeded") || errorMessageLower.includes("too many signups")) {
+        title = "Rate Limit Reached";
+        description = "Too many signup attempts or email verification rate limit reached. Please wait a few minutes and try again.";
+      } else if (errorMessageLower.includes("invalid email") || errorMessageLower.includes("bad email")) {
+        title = "Invalid Email Address";
+        description = "Please enter a valid email address.";
+      } else if (errorMessageLower.includes("password") || errorCode?.includes("weak")) {
+        title = "Weak Password";
+        description = "Password does not meet the security requirements. Please choose a stronger password.";
+      } else if (errorMessageLower.includes("network") || errorMessageLower.includes("failed to fetch")) {
+        title = "Network Connection Issue";
+        description = "A network error occurred. Please check your internet connection and try again.";
+      }
+
+      toast({ title, description, variant: "destructive" });
+
+      if (shouldRedirectToLogin) {
+        setTimeout(() => {
+          navigate("/admin/login");
+        }, 3000);
+      }
     } else {
       toast({ title: "Admin Account created!", description: "Please check your email to verify your account." });
       navigate("/admin/login");

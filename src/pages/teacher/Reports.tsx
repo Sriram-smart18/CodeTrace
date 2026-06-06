@@ -426,7 +426,7 @@ export default function TeacherReports() {
                       {reportType === "ai" && (
                         <>
                           <td className="p-4 text-center font-mono">
-                            {item.behavioral_summary?.paste_count || 0} times
+                            {(item.behavioral_summary as any)?.paste_count || 0} times
                           </td>
                           <td className="p-4 text-center font-mono font-bold">
                             <span className={item.plagiarism_score && item.plagiarism_score > 60 ? "text-red-400" : "text-emerald-400"}>
@@ -454,16 +454,16 @@ export default function TeacherReports() {
                       {reportType === "activity" && (
                         <>
                           <td className="p-4 text-center font-mono text-muted-foreground">
-                            {item.behavioral_summary?.submission_duration || 0}s
+                            {(item.behavioral_summary as any)?.submission_duration || 0}s
                           </td>
                           <td className="p-4 text-center font-mono text-muted-foreground">
-                            {item.behavioral_summary?.total_typing_time || 0}s
+                            {(item.behavioral_summary as any)?.total_typing_time || 0}s
                           </td>
                           <td className="p-4 text-center font-mono text-muted-foreground">
-                            {item.behavioral_summary?.deletion_frequency || 0}
+                            {(item.behavioral_summary as any)?.deletion_frequency || 0}
                           </td>
                           <td className="p-4 font-mono text-foreground font-semibold">
-                            {item.behavioral_summary?.typing_speed_estimate || 0} cpm
+                            {(item.behavioral_summary as any)?.typing_speed_estimate || 0} cpm
                           </td>
                         </>
                       )}

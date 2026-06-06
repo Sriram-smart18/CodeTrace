@@ -33,7 +33,7 @@ export const AssignmentWorkspace: React.FC<AssignmentWorkspaceProps> = ({ assign
   
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { user } = useAuth();
+  const { user, session } = useAuth();
   const { theme } = useTheme();
   
   const [code, setCode] = useState("");
@@ -462,24 +462,24 @@ export const AssignmentWorkspace: React.FC<AssignmentWorkspaceProps> = ({ assign
   }, [code, assignmentId, user?.id, submission, trackSubmit, toast, getBehavioralSummary]);
 
   return (
-    <div className="h-[calc(100vh-4rem)] flex flex-col bg-[#0b0f19] select-none text-foreground font-sans">
+    <div className="h-[calc(100vh-4rem)] flex flex-col bg-white dark:bg-[#0b0f19] select-none text-slate-900 dark:text-foreground font-sans">
       {(isOffline || isRecovering) && (
         <div className={`h-6 text-[10px] flex items-center justify-center font-bold tracking-widest uppercase transition-colors ${isOffline ? 'bg-amber-600 text-white' : 'bg-green-600 text-white'}`}>
           {isOffline ? 'Offline Mode Active - Changes Saved Locally' : 'Network Restored - Syncing...'}
         </div>
       )}
-      <div className="editor-toolbar flex items-center justify-between gap-3 px-4 py-2 bg-[#0f172a] border-b border-[#1e293b] flex-wrap z-20 relative select-none">
+      <div className="editor-toolbar flex items-center justify-between gap-3 px-4 py-2 bg-slate-50 dark:bg-[#0f172a] border-b border-slate-200 dark:border-[#1e293b] flex-wrap z-20 relative select-none">
         <div className="flex items-center gap-3">
           <Button 
             variant="ghost" 
             size="icon" 
             onClick={() => navigate(assignmentId ? "/student/assignments" : "/student/dashboard")} 
-            className="h-8 w-8 hover:bg-white/5 text-muted-foreground hover:text-foreground rounded-lg"
+            className="h-8 w-8 hover:bg-slate-100 dark:hover:bg-white/5 text-slate-500 dark:text-muted-foreground hover:text-slate-900 dark:hover:text-foreground rounded-lg"
           >
             <ArrowLeft className="h-4 w-4" />
           </Button>
           <div className="min-w-0">
-            <h1 className="text-xs font-bold truncate text-foreground">
+            <h1 className="text-xs font-bold truncate text-slate-900 dark:text-foreground">
               {assignmentId 
                 ? (assignment ? assignment.title : "Coding Challenge")
                 : "Practice Mode"}
@@ -490,7 +490,7 @@ export const AssignmentWorkspace: React.FC<AssignmentWorkspaceProps> = ({ assign
         <div className="flex items-center gap-2 flex-wrap">
           <div className="language-selector-wrapper min-w-[120px] shrink-0 z-20">
             <Select value={language} onValueChange={setLanguage}>
-              <SelectTrigger className="h-7 w-full text-xs bg-[#0d1525] border-white/10">
+              <SelectTrigger className="h-7 w-full text-xs bg-white dark:bg-[#0d1525] border-slate-200 dark:border-white/10 text-slate-900 dark:text-foreground">
                 <SelectValue placeholder="Language" />
               </SelectTrigger>
               <SelectContent className="z-[100]">
@@ -644,13 +644,13 @@ export const AssignmentWorkspace: React.FC<AssignmentWorkspaceProps> = ({ assign
                   />
                 </SubsystemErrorBoundary>
               </ResizablePanel>
-              <ResizableHandle className="bg-white/5 h-[1px]" />
+              <ResizableHandle className="bg-slate-200 dark:bg-white/5 h-[1px]" />
               <ResizablePanel defaultSize={30} minSize={15}>
                 <SubsystemErrorBoundary subsystemName="Execution Engine Console">
-                  <div className="h-full flex flex-col bg-[#0b0f19]">
-                    <div className="px-3 py-1.5 border-b border-white/5 bg-[#0d1525] flex items-center z-10 shadow-sm shrink-0">
+                  <div className="h-full flex flex-col bg-white dark:bg-[#0b0f19]">
+                    <div className="px-3 py-1.5 border-b border-slate-200 dark:border-white/5 bg-slate-50 dark:bg-[#0d1525] flex items-center z-10 shadow-sm shrink-0">
                       <TerminalIcon className="h-3 w-3 mr-2 text-muted-foreground" />
-                      <span className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground font-mono">Console Output</span>
+                      <span className="text-[10px] uppercase font-bold tracking-wider text-slate-500 dark:text-muted-foreground font-mono">Console Output</span>
                       {execState === 'executing' && (
                         <span className="ml-3 text-[10px] text-amber-500 animate-pulse font-mono flex items-center">
                           <Loader2 className="w-3 h-3 mr-1 animate-spin" /> Executing...

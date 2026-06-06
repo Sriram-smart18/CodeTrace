@@ -58,7 +58,7 @@ export default function TeacherAssignmentDetail() {
 
   const [assignment, setAssignment] = useState<Assignment | null>(null);
   const [submissions, setSubmissions] = useState<SubmissionWithProfile[]>([]);
-  const [evaluations, setEvaluations] = useState<Record<string, IntegrityEvaluation>>({});
+  const [evaluations, setEvaluations] = useState<Record<string, any>>({});
   const [assessments, setAssessments] = useState<Record<string, AssessmentResult>>({});
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -66,7 +66,7 @@ export default function TeacherAssignmentDetail() {
   const [evaluating, setEvaluating] = useState<string | null>(null);
   const [batchEvaluating, setBatchEvaluating] = useState(false);
   const [batchProgress, setBatchProgress] = useState({ done: 0, total: 0 });
-  const [selectedEval, setSelectedEval] = useState<IntegrityEvaluation | null>(null);
+  const [selectedEval, setSelectedEval] = useState<any>(null);
   const [detailOpen, setDetailOpen] = useState(false);
   const [codePreview, setCodePreview] = useState<{ code: string; studentName: string } | null>(null);
 
@@ -165,7 +165,7 @@ export default function TeacherAssignmentDetail() {
         .from("profiles").select("user_id, name, uid, email")
         .in("user_id", Array.from(studentIds));
 
-      const profileMap: Record<string, Tables<"profiles">> = {};
+      const profileMap: Record<string, { name: string; uid: string | null; email: string }> = {};
       profiles?.forEach((p) => { profileMap[p.user_id] = p; });
       setProfilesMap(profileMap);
 
@@ -177,7 +177,7 @@ export default function TeacherAssignmentDetail() {
     }
 
     if (evals) {
-      const map: Record<string, IntegrityEvaluation> = {};
+      const map: Record<string, any> = {};
       evals.forEach((e) => { map[e.submission_id] = e; });
       setEvaluations(map);
     }

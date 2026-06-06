@@ -51,6 +51,7 @@ const createFallbackEvaluation = (submissionId: string, assessment?: AssessmentR
       strengths: qDetails.strengths || [],
       improvements: qDetails.improvements || [],
     },
+    plagiarism_details: null,
     risk_level: assessment?.risk_level || "low",
     integrity_verdict: pDetails.plagiarism_explanation || null,
     suspicious_segments: null,
@@ -70,10 +71,10 @@ const createFallbackEvaluation = (submissionId: string, assessment?: AssessmentR
 
 export default function TeacherSubmissions() {
   const [submissions, setSubmissions] = useState<SubmissionWithAssignment[]>([]);
-  const [evaluations, setEvaluations] = useState<Record<string, IntegrityEvaluation>>({});
+  const [evaluations, setEvaluations] = useState<Record<string, any>>({});
   const [assessments, setAssessments] = useState<Record<string, AssessmentResult>>({});
   const [evaluating, setEvaluating] = useState<string | null>(null);
-  const [selectedEval, setSelectedEval] = useState<IntegrityEvaluation | null>(null);
+  const [selectedEval, setSelectedEval] = useState<any>(null);
   const [detailOpen, setDetailOpen] = useState(false);
   const { toast } = useToast();
 
@@ -96,29 +97,48 @@ export default function TeacherSubmissions() {
       .select("*, assignments(title, total_marks)")
       .in("assignment_id", assignmentIds)
       .order("submitted_at", { ascending: false });
-    if (subs) setSubmissions(subs as SubmissionWithAssignment[]);
 
-    const subIds = subs?.map((s) => s.id) || [];
-    if (subIds.length > 0) {
-      const { data: evals } = await supabase
-        .from("ai_evaluations")
-        .select("*")
-        .in("submission_id", subIds);
-      if (evals) {
-        const map: Record<string, IntegrityEvaluation> = {};
-        evals.forEach((e) => { map[e.submission_id] = e; });
-        setEvaluations(map);
-      }
+    if (subs) {
+      // Group by student_id and assignment_id, keeping the newest submitted_at record
+      // Since the query is ordered by submitted_at DESC, the first record we see for each key is the latest one.
+      const seen = new Set<string>();
+      const filteredSubs = subs.filter((s) => {
+        const key = `${s.student_id}-${s.assignment_id}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+      setSubmissions(filteredSubs as SubmissionWithAssignment[]);
 
-      const { data: assessList } = await supabase
-        .from("assessment_results")
-        .select("*")
-        .in("submission_id", subIds);
-      if (assessList) {
-        const map: Record<string, AssessmentResult> = {};
-        assessList.forEach((a) => { map[a.submission_id] = a; });
-        setAssessments(map);
+      const subIds = filteredSubs.map((s) => s.id);
+      if (subIds.length > 0) {
+        const { data: evals } = await supabase
+          .from("ai_evaluations")
+          .select("*")
+          .in("submission_id", subIds);
+        if (evals) {
+          const map: Record<string, any> = {};
+          evals.forEach((e) => { map[e.submission_id] = e; });
+          setEvaluations(map);
+        }
+
+        const { data: assessList } = await supabase
+          .from("assessment_results")
+          .select("*")
+          .in("submission_id", subIds);
+        if (assessList) {
+          const map: Record<string, AssessmentResult> = {};
+          assessList.forEach((a) => { map[a.submission_id] = a; });
+          setAssessments(map);
+        }
+      } else {
+        setEvaluations({});
+        setAssessments({});
       }
+    } else {
+      setSubmissions([]);
+      setEvaluations({});
+      setAssessments({});
     }
   };
 

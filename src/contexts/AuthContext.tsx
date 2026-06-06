@@ -11,7 +11,7 @@ interface AuthContextType {
   user: User | null;
   profile: Profile | null;
   loading: boolean;
-  signUp: (email: string, password: string, name: string, role: "student" | "teacher" | "admin", uid?: string) => Promise<{ error: Error | null }>;
+  signUp: (email: string, password: string, name: string, role: "student" | "teacher" | "admin", uid?: string) => Promise<{ data?: any; error: any }>;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
 }
@@ -65,14 +65,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signUp = async (email: string, password: string, name: string, role: "student" | "teacher" | "admin", uid?: string) => {
-    const { error } = await supabase.auth.signUp({
+    const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
         data: { name, role, uid: role === "student" ? uid : undefined },
       },
     });
-    return { error };
+
+    if (error) {
+      return { data, error };
+    }
+
+    // Check if user already exists (identities is empty array and user is returned)
+    if (data?.user && (!data.user.identities || data.user.identities.length === 0)) {
+      const existsError = {
+        name: "AuthApiError",
+        message: "User already registered",
+        status: 409,
+        code: "user_already_exists"
+      };
+      return { data, error: existsError };
+    }
+
+    return { data, error };
   };
 
   const signIn = async (email: string, password: string) => {

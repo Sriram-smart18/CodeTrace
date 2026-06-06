@@ -77,7 +77,7 @@ export default function StudentClassrooms() {
     setJoining(true);
     try {
       // Enroll via secure RPC join_classroom
-      const { data, error: joinErr } = await supabase.rpc("join_classroom", {
+      const { data, error: joinErr } = await (supabase.rpc as any)("join_classroom", {
         p_classroom_code: code.trim().toUpperCase()
       });
 
