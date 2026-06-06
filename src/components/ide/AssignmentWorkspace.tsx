@@ -106,7 +106,7 @@ export const AssignmentWorkspace: React.FC<AssignmentWorkspaceProps> = ({ assign
 
   // Setup persistent Socket.IO connection for live monitoring
   useEffect(() => {
-    if (!assignmentId || !user?.id) return;
+    if (!assignmentId || !user?.id || !session?.access_token) return;
 
     const roomId = `room_${assignmentId}`;
     console.log("[SOCKET CONNECT] Initiating student monitoring socket connection to", EXECUTION_SERVER_URL);
@@ -163,7 +163,7 @@ export const AssignmentWorkspace: React.FC<AssignmentWorkspaceProps> = ({ assign
       socket.disconnect();
       monitoringSocketRef.current = null;
     };
-  }, [assignmentId, user?.id]);
+  }, [assignmentId, user?.id, session?.access_token]);
 
   // Emit code updates when code changes
   useEffect(() => {
@@ -341,6 +341,14 @@ export const AssignmentWorkspace: React.FC<AssignmentWorkspaceProps> = ({ assign
       xtermRef.current.focus();
     }
 
+    if (!session?.access_token) {
+      if (xtermRef.current) {
+        xtermRef.current.write(`\r\n\x1b[31m[Connection Error: No authentication token found]\x1b[0m\r\n`);
+      }
+      setExecState('idle');
+      return;
+    }
+
     setExecState('executing');
     
     const summary = getBehavioralSummary();
@@ -356,7 +364,7 @@ export const AssignmentWorkspace: React.FC<AssignmentWorkspaceProps> = ({ assign
 
     const socket = io(EXECUTION_SERVER_URL, {
       auth: {
-        token: session?.access_token
+        token: session.access_token
       }
     });
     socketRef.current = socket;
@@ -366,7 +374,8 @@ export const AssignmentWorkspace: React.FC<AssignmentWorkspaceProps> = ({ assign
       socket.emit("run", {
         sessionId,
         language,
-        code
+        code,
+        userId: user?.id
       });
     });
 
@@ -404,7 +413,7 @@ export const AssignmentWorkspace: React.FC<AssignmentWorkspaceProps> = ({ assign
       socket.disconnect();
       socketRef.current = null;
     });
-  }, [code, language, execState, trackRun, getBehavioralSummary]);
+  }, [code, language, execState, trackRun, getBehavioralSummary, session?.access_token, user]);
 
   const handleStopExecution = useCallback(() => {
     if (socketRef.current && currentSessionIdRef.current) {

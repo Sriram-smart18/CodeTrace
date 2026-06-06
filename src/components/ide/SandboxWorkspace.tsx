@@ -306,12 +306,20 @@ export const SandboxWorkspace: React.FC<SandboxWorkspaceProps> = ({
         return;
       }
 
+      if (!session?.access_token) {
+        if (terminalRef.current) {
+          terminalRef.current.write("\r\n\x1b[31m[Connection Error: No authentication token found]\x1b[0m\r\n");
+        }
+        setExecState('error');
+        return;
+      }
+
       const sessionId = crypto.randomUUID();
       currentSessionIdRef.current = sessionId;
 
       const socket = io(EXECUTION_SERVER_URL, {
         auth: {
-          token: session?.access_token
+          token: session.access_token
         }
       });
       socketRef.current = socket;
@@ -401,7 +409,7 @@ export const SandboxWorkspace: React.FC<SandboxWorkspaceProps> = ({
         });
       }
     }
-  }, [activeFileId, execState, toast, saveToSupabase, session, user, setExecState, setIdeMode]);
+  }, [activeFileId, execState, toast, saveToSupabase, session, session?.access_token, user, setExecState, setIdeMode]);
 
   // Global code rerun listener
   useEffect(() => {

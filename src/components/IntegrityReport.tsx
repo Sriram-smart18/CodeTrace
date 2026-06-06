@@ -32,8 +32,29 @@ interface PlagiarismDetails {
   token_similarity: number;
   levenshtein_distance: number;
   winnowing_similarity: number;
+  structural_similarity?: number;
   matched_student_ids?: string[];
   matched_submission_ids?: string[];
+  similarity_percentage?: number;
+  matched_student_count?: number;
+  plagiarism_explanation?: string;
+  score_breakdown?: {
+    ast_score: number;
+    winnowing_score: number;
+    token_score: number;
+    levenshtein_score: number;
+    structural_score: number;
+    ai_score: number;
+    final_score: number;
+  } | null;
+  match_metadata?: {
+    matched_student_id: string;
+    matched_submission_id: string;
+    matched_assignment_id: string;
+    similarity_source: string;
+  } | null;
+  behavioral_indicators?: string[];
+  style_inconsistency_detected?: boolean;
 }
 
 interface SuspiciousSegment {
@@ -202,6 +223,7 @@ function BehavioralMetric({ label, value, unit }: { label: string; value?: numbe
 export function IntegrityReport({ evaluation: ev, assessment, open, onOpenChange, totalMarks = 100 }: IntegrityReportProps) {
   const [segmentsOpen, setSegmentsOpen] = useState(false);
   const riskKey = assessment ? assessment.risk_level.toLowerCase() : (ev.risk_level || "low").toLowerCase();
+  const plagDetails = (assessment?.plagiarism_details || ev.plagiarism_details) as unknown as PlagiarismDetails | null;
   
   let risk = RISK_CONFIG[riskKey] || RISK_CONFIG.low;
   if (assessment) {
@@ -225,6 +247,14 @@ export function IntegrityReport({ evaluation: ev, assessment, open, onOpenChange
     } else if (rLvl === "HIGH") {
       risk = {
         label: "High Risk",
+        color: "text-orange-400",
+        bgColor: "bg-orange-500/10",
+        borderColor: "border-orange-500/30",
+        icon: <ShieldAlert className="h-4 w-4 text-orange-400" />,
+      };
+    } else if (rLvl === "CRITICAL") {
+      risk = {
+        label: "Critical Risk",
         color: "text-red-400",
         bgColor: "bg-red-500/10",
         borderColor: "border-red-500/30",
@@ -273,6 +303,19 @@ export function IntegrityReport({ evaluation: ev, assessment, open, onOpenChange
               </div>
             )}
 
+            {/* Style Consistency Warning */}
+            {(plagDetails?.style_inconsistency_detected || ev.style_inconsistency_detected) && (
+              <div className="flex items-start gap-3 p-3.5 rounded-lg bg-orange-500/10 border border-orange-500/40">
+                <AlertTriangle className="h-5 w-5 text-orange-400 flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-sm font-semibold text-orange-400">Sudden Coding-Style Deviation Detected</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    This submission's function length, variable naming style, nesting depth, or control-flow complexity deviates significantly from the student's own historical coding style baseline.
+                  </p>
+                </div>
+              </div>
+            )}
+
             {/* Integrity Verdict */}
             {ev.integrity_verdict && (
               <div className={`p-3.5 rounded-lg border ${risk.bgColor} ${risk.borderColor}`}>
@@ -304,12 +347,89 @@ export function IntegrityReport({ evaluation: ev, assessment, open, onOpenChange
               )}
 
               <ScoreBar label="Plagiarism Risk" score={assessment ? (100 - assessment.plagiarism_score) : ev.plagiarism_score} inverted />
-              {assessment?.plagiarism_details && (
-                <div className="text-[11px] text-muted-foreground pl-4 -mt-2 grid grid-cols-2 gap-x-2 gap-y-0.5">
-                  <div>AST Similarity: {(assessment.plagiarism_details as unknown as PlagiarismDetails).ast_similarity}%</div>
-                  <div>Token Similarity: {(assessment.plagiarism_details as unknown as PlagiarismDetails).token_similarity}%</div>
-                  <div>Levenshtein Sim: {(assessment.plagiarism_details as unknown as PlagiarismDetails).levenshtein_distance}%</div>
-                  <div>Fingerprints (Winnowing): {(assessment.plagiarism_details as unknown as PlagiarismDetails).winnowing_similarity}%</div>
+              {plagDetails && (
+                <div className="pl-4 -mt-1 space-y-2">
+                  {/* Score Breakdown Table */}
+                  {plagDetails.score_breakdown ? (
+                    <div className="rounded-lg border border-border/40 overflow-hidden bg-muted/10 my-2">
+                      <table className="w-full text-[11px] text-muted-foreground">
+                        <thead>
+                          <tr className="bg-muted/30 border-b border-border/40 text-foreground font-semibold">
+                            <th className="text-left px-2.5 py-1">Engine</th>
+                            <th className="text-right px-2.5 py-1">Similarity</th>
+                            <th className="text-right px-2.5 py-1">Weight</th>
+                            <th className="text-right px-2.5 py-1">Weighted</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <tr className="border-b border-border/10">
+                            <td className="px-2.5 py-1 text-foreground font-medium">AST Similarity</td>
+                            <td className="text-right px-2.5 py-1 font-mono">{plagDetails.score_breakdown.ast_score}%</td>
+                            <td className="text-right px-2.5 py-1">35%</td>
+                            <td className="text-right px-2.5 py-1 font-mono">{Math.round(plagDetails.score_breakdown.ast_score * 0.35)}%</td>
+                          </tr>
+                          <tr className="border-b border-border/10">
+                            <td className="px-2.5 py-1 text-foreground font-medium">Winnowing Fingerprints</td>
+                            <td className="text-right px-2.5 py-1 font-mono">{plagDetails.score_breakdown.winnowing_score}%</td>
+                            <td className="text-right px-2.5 py-1">25%</td>
+                            <td className="text-right px-2.5 py-1 font-mono">{Math.round(plagDetails.score_breakdown.winnowing_score * 0.25)}%</td>
+                          </tr>
+                          <tr className="border-b border-border/10">
+                            <td className="px-2.5 py-1 text-foreground font-medium">Token Similarity</td>
+                            <td className="text-right px-2.5 py-1 font-mono">{plagDetails.score_breakdown.token_score}%</td>
+                            <td className="text-right px-2.5 py-1">15%</td>
+                            <td className="text-right px-2.5 py-1 font-mono">{Math.round(plagDetails.score_breakdown.token_score * 0.15)}%</td>
+                          </tr>
+                          <tr className="border-b border-border/10">
+                            <td className="px-2.5 py-1 text-foreground font-medium">Levenshtein Similarity</td>
+                            <td className="text-right px-2.5 py-1 font-mono">{plagDetails.score_breakdown.levenshtein_score}%</td>
+                            <td className="text-right px-2.5 py-1">10%</td>
+                            <td className="text-right px-2.5 py-1 font-mono">{Math.round(plagDetails.score_breakdown.levenshtein_score * 0.10)}%</td>
+                          </tr>
+                          <tr className="border-b border-border/10">
+                            <td className="px-2.5 py-1 text-foreground font-medium">Structural Similarity</td>
+                            <td className="text-right px-2.5 py-1 font-mono">{plagDetails.score_breakdown.structural_score}%</td>
+                            <td className="text-right px-2.5 py-1">10%</td>
+                            <td className="text-right px-2.5 py-1 font-mono">{Math.round(plagDetails.score_breakdown.structural_score * 0.10)}%</td>
+                          </tr>
+                          <tr className="border-b border-border/10">
+                            <td className="px-2.5 py-1 text-foreground font-medium">AI Semantic Review</td>
+                            <td className="text-right px-2.5 py-1 font-mono">{plagDetails.score_breakdown.ai_score}%</td>
+                            <td className="text-right px-2.5 py-1">5%</td>
+                            <td className="text-right px-2.5 py-1 font-mono">{Math.round(plagDetails.score_breakdown.ai_score * 0.05)}%</td>
+                          </tr>
+                          <tr className="bg-muted/10 font-bold text-foreground">
+                            <td className="px-2.5 py-1">Final Plagiarism Score</td>
+                            <td className="text-right px-2.5 py-1"></td>
+                            <td className="text-right px-2.5 py-1">100%</td>
+                            <td className="text-right px-2.5 py-1 text-primary font-mono">{plagDetails.score_breakdown.final_score}%</td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <div className="text-[11px] text-muted-foreground grid grid-cols-2 gap-x-2 gap-y-0.5">
+                      <div>AST Similarity: {plagDetails.ast_similarity}%</div>
+                      <div>Token Similarity: {plagDetails.token_similarity}%</div>
+                      <div>Levenshtein Sim: {plagDetails.levenshtein_distance}%</div>
+                      <div>Fingerprints (Winnowing): {plagDetails.winnowing_similarity}%</div>
+                    </div>
+                  )}
+
+                  {/* Match Source Metadata */}
+                  {plagDetails.match_metadata && (
+                    <div className="text-[11px] text-muted-foreground space-y-0.5 border-t border-border/30 pt-1.5 mt-1.5">
+                      <div><strong>Matched Student:</strong> ...{plagDetails.match_metadata.matched_student_id.slice(-8)}</div>
+                      <div><strong>Matched Submission:</strong> ...{plagDetails.match_metadata.matched_submission_id.slice(-8)}</div>
+                      <div><strong>Matched Assignment:</strong> ...{plagDetails.match_metadata.matched_assignment_id.slice(-8)}</div>
+                      <div>
+                        <strong>Match Source:</strong>{' '}
+                        <Badge variant="outline" className="text-[9px] uppercase tracking-wider px-1.5 py-0.1 bg-primary/5 border-primary/20 text-primary capitalize font-mono">
+                          {plagDetails.match_metadata.similarity_source.replace('_', ' ')}
+                        </Badge>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -379,14 +499,20 @@ export function IntegrityReport({ evaluation: ev, assessment, open, onOpenChange
             )}
 
             {/* Plagiarism Indicators */}
-            {ev.plagiarism_indicators && ev.plagiarism_indicators.length > 0 && (
+            {((ev.plagiarism_indicators && ev.plagiarism_indicators.length > 0) || (plagDetails?.behavioral_indicators && plagDetails.behavioral_indicators.length > 0)) && (
               <div className="space-y-2">
-                <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">Plagiarism Signals</p>
+                <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">Plagiarism Signals & Behavioral Correlation</p>
                 <ul className="space-y-1">
-                  {ev.plagiarism_indicators.map((indicator, i) => (
+                  {ev.plagiarism_indicators && ev.plagiarism_indicators.map((indicator, i) => (
                     <li key={i} className="flex items-start gap-2 text-xs text-muted-foreground">
                       <ClipboardX className="h-3 w-3 text-red-400 flex-shrink-0 mt-0.5" />
-                      {indicator}
+                      <span>{indicator}</span>
+                    </li>
+                  ))}
+                  {plagDetails?.behavioral_indicators && plagDetails.behavioral_indicators.map((indicator, i) => (
+                    <li key={`beh-${i}`} className="flex items-start gap-2 text-xs text-muted-foreground bg-orange-500/5 border border-orange-500/20 p-2 rounded-lg">
+                      <AlertTriangle className="h-3.5 w-3.5 text-orange-400 flex-shrink-0 mt-0.5" />
+                      <span>{indicator}</span>
                     </li>
                   ))}
                 </ul>

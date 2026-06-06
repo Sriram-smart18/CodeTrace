@@ -11,6 +11,10 @@ export default defineConfig({
     include: ["src/**/*.{test,spec}.{ts,tsx}"],
   },
   resolve: {
-    alias: { "@": path.resolve(__dirname, "./src") },
+    alias: {
+      "@": path.resolve(__dirname, "./src"),
+      "https://deno.land/std@0.168.0/http/server.ts": path.resolve(__dirname, "./src/test/mocks/denoServerMock.ts"),
+      "https://esm.sh/@supabase/supabase-js@2": path.resolve(__dirname, "./src/test/mocks/supabaseMock.ts"),
+    },
   },
 });

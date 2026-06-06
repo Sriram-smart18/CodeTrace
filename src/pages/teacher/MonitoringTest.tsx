@@ -93,7 +93,7 @@ export default function TeacherMonitoringTest() {
 
   // Connect sockets and realtime when selection changes
   useEffect(() => {
-    if (!selectedAssignmentId || !selectedStudentId) return;
+    if (!selectedAssignmentId || !selectedStudentId || !token) return;
 
     const roomId = `room_${selectedAssignmentId}`;
     addLog("info", "[INFO]", `Configuring simulation room: ${roomId}`);

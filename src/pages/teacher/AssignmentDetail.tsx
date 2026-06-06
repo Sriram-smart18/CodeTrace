@@ -629,26 +629,33 @@ export default function TeacherAssignmentDetail() {
     if (similarity === null || similarity === undefined) {
       return <Badge variant="secondary" className="text-[10px]">PENDING</Badge>;
     }
-    if (similarity < 30) {
+    if (similarity < 40) {
       return (
         <Badge className="bg-emerald-500/10 border-emerald-500/20 text-emerald-500 hover:bg-emerald-500/10 text-[10px] capitalize">
           LOW
         </Badge>
       );
-    } else if (similarity <= 70) {
+    } else if (similarity < 70) {
       return (
         <Badge className="bg-amber-500/10 border-amber-500/20 text-amber-500 hover:bg-amber-500/10 text-[10px] capitalize">
           MEDIUM
         </Badge>
       );
+    } else if (similarity < 85) {
+      return (
+        <Badge className="bg-orange-500/10 border-orange-500/20 text-orange-500 hover:bg-orange-500/10 text-[10px] capitalize">
+          HIGH
+        </Badge>
+      );
     } else {
       return (
-        <Badge className="bg-red-500/10 border-red-500/20 text-red-500 hover:bg-red-500/10 text-[10px] capitalize">
-          HIGH
+        <Badge className="bg-red-500/10 border-red-500/20 text-red-500 hover:bg-red-500/10 text-[10px] capitalize font-bold">
+          CRITICAL
         </Badge>
       );
     }
   };
+
 
   // CSV Exporter (Phase 7)
   const handleExportCSV = () => {
@@ -689,6 +696,7 @@ export default function TeacherAssignmentDetail() {
 
   const getRiskLevel = (score: number | null) => {
     if (score === null) return "none";
+    if (score >= 85) return "critical";
     if (score >= 70) return "high";
     if (score >= 40) return "medium";
     return "low";
@@ -697,13 +705,18 @@ export default function TeacherAssignmentDetail() {
   const riskBadge = (score: number | null) => {
     if (score === null) return <span className="text-xs text-muted-foreground">—</span>;
     const level = getRiskLevel(score);
-    const variant = level === "high" ? "destructive" : level === "medium" ? "outline" : "secondary";
     return (
-      <Badge variant={variant} className="text-[10px]">
+      <Badge className={`text-[10px] ${
+        level === "critical" ? "bg-red-500/10 border-red-500/20 text-red-500 hover:bg-red-500/10" :
+        level === "high" ? "bg-orange-500/10 border-orange-500/20 text-orange-500 hover:bg-orange-500/10" :
+        level === "medium" ? "bg-amber-500/10 border-amber-500/20 text-amber-500 hover:bg-amber-500/10" :
+        "bg-emerald-500/10 border-emerald-500/20 text-emerald-500 hover:bg-emerald-500/10"
+      }`}>
         {score}% {level.toUpperCase()}
       </Badge>
     );
   };
+
 
   const verdictBadge = (verdict: string | null) => {
     if (!verdict) return <Badge variant="secondary">Pending</Badge>;
@@ -789,12 +802,13 @@ export default function TeacherAssignmentDetail() {
     const similarity = details?.similarity_percentage || 0;
     
     acc.sum += similarity;
-    if (similarity > 70) acc.high++;
-    else if (similarity >= 30) acc.medium++;
+    if (similarity >= 85) acc.critical++;
+    else if (similarity >= 70) acc.high++;
+    else if (similarity >= 40) acc.medium++;
     else acc.low++;
     
     return acc;
-  }, { sum: 0, high: 0, medium: 0, low: 0 });
+  }, { sum: 0, critical: 0, high: 0, medium: 0, low: 0 });
   
   const avgSimilarity = totalPlagAnalyzed > 0 ? Math.round(plagStats.sum / totalPlagAnalyzed) : 0;
 
@@ -888,12 +902,13 @@ export default function TeacherAssignmentDetail() {
                   <SelectItem value="flagged">Flagged</SelectItem>
                 </SelectContent>
               </Select>
-              <Select value={riskFilter} onValueChange={setStatusFilter}>
+              <Select value={riskFilter} onValueChange={setRiskFilter}>
                 <SelectTrigger className="w-[140px] h-9 text-xs">
                   <SelectValue placeholder="AI Risk" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Risk</SelectItem>
+                  <SelectItem value="critical">Critical Risk</SelectItem>
                   <SelectItem value="high">High Risk</SelectItem>
                   <SelectItem value="medium">Medium Risk</SelectItem>
                   <SelectItem value="low">Low Risk</SelectItem>
@@ -960,6 +975,8 @@ export default function TeacherAssignmentDetail() {
                                     <Badge className={`text-[9px] px-1 py-0.2 border capitalize ${
                                       assessments[s.id].risk_level === "LOW" ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-500 hover:bg-emerald-500/10" :
                                       assessments[s.id].risk_level === "MEDIUM" ? "bg-amber-500/10 border-amber-500/20 text-amber-500 hover:bg-amber-500/10" :
+                                      assessments[s.id].risk_level === "HIGH" ? "bg-orange-500/10 border-orange-500/20 text-orange-500 hover:bg-orange-500/10" :
+                                      assessments[s.id].risk_level === "CRITICAL" ? "bg-red-500/10 border-red-500/20 text-red-500 hover:bg-red-500/10" :
                                       "bg-red-500/10 border-red-500/20 text-red-500 hover:bg-red-500/10"
                                     }`}>
                                       {assessments[s.id].risk_level}
@@ -1387,7 +1404,7 @@ export default function TeacherAssignmentDetail() {
 
           {/* TAB 4: Plagiarism Report */}
           <TabsContent value="plagiarism" className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
               <Card className="glass-panel">
                 <CardHeader className="py-2.5">
                   <CardDescription className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Total Analyzed</CardDescription>
@@ -1406,15 +1423,23 @@ export default function TeacherAssignmentDetail() {
               </Card>
               <Card className="glass-panel">
                 <CardHeader className="py-2.5">
-                  <CardDescription className="text-xs font-medium uppercase tracking-wider text-muted-foreground font-semibold text-red-500">High Risk (&gt;70%)</CardDescription>
+                  <CardDescription className="text-xs font-medium uppercase tracking-wider text-muted-foreground font-semibold text-red-500">Critical Risk (&gt;=85%)</CardDescription>
                 </CardHeader>
                 <CardContent className="pb-3 pt-0">
-                  <div className="text-xl font-bold font-mono text-red-500">{plagStats.high}</div>
+                  <div className="text-xl font-bold font-mono text-red-500">{plagStats.critical}</div>
                 </CardContent>
               </Card>
               <Card className="glass-panel">
                 <CardHeader className="py-2.5">
-                  <CardDescription className="text-xs font-medium uppercase tracking-wider text-muted-foreground font-semibold text-amber-500">Medium Risk (30-70%)</CardDescription>
+                  <CardDescription className="text-xs font-medium uppercase tracking-wider text-muted-foreground font-semibold text-orange-500">High Risk (70-84%)</CardDescription>
+                </CardHeader>
+                <CardContent className="pb-3 pt-0">
+                  <div className="text-xl font-bold font-mono text-orange-500">{plagStats.high}</div>
+                </CardContent>
+              </Card>
+              <Card className="glass-panel">
+                <CardHeader className="py-2.5">
+                  <CardDescription className="text-xs font-medium uppercase tracking-wider text-muted-foreground font-semibold text-amber-500">Medium Risk (40-69%)</CardDescription>
                 </CardHeader>
                 <CardContent className="pb-3 pt-0">
                   <div className="text-xl font-bold font-mono text-amber-500">{plagStats.medium}</div>
@@ -1479,8 +1504,9 @@ export default function TeacherAssignmentDetail() {
                                   <div className="w-16 h-1.5 rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden">
                                     <div 
                                       className={`h-full ${
-                                        similarity < 30 ? "bg-emerald-500" :
-                                        similarity <= 70 ? "bg-amber-500" :
+                                        similarity < 40 ? "bg-emerald-500" :
+                                        similarity < 70 ? "bg-amber-500" :
+                                        similarity < 85 ? "bg-orange-500" :
                                         "bg-red-500"
                                       }`}
                                       style={{ width: `${similarity}%` }}

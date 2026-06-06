@@ -150,7 +150,7 @@ export default function TeacherLiveSession() {
 
   // Realtime subscription & Socket.IO monitoring
   useEffect(() => {
-    if (!assignmentId) return;
+    if (!assignmentId || !token) return;
 
     // 1. Supabase Realtime Setup
     const channelName = `live-session-${assignmentId}`;

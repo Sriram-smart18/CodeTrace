@@ -13,3 +13,15 @@ Object.defineProperty(window, "matchMedia", {
     dispatchEvent: () => {},
   }),
 });
+
+if (typeof (globalThis as any).Deno === "undefined") {
+  (globalThis as any).Deno = {
+    env: {
+      get: (key: string) => {
+        if (key === "OPENROUTER_API_KEY") return "mock_key";
+        return undefined;
+      }
+    }
+  };
+}
+

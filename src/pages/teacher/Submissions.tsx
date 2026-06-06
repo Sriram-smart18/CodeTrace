@@ -225,9 +225,10 @@ export default function TeacherSubmissions() {
 
   const riskLevel = (score: number | null) => {
     if (score === null) return { label: "N/A", color: "text-muted-foreground" };
-    if (score >= 70) return { label: "High", color: "text-destructive" };
-    if (score >= 40) return { label: "Medium", color: "text-[hsl(var(--warning))]" };
-    return { label: "Low", color: "text-[hsl(var(--success))]" };
+    if (score >= 85) return { label: "Critical", color: "text-red-500 font-bold" };
+    if (score >= 70) return { label: "High", color: "text-orange-500" };
+    if (score >= 40) return { label: "Medium", color: "text-amber-500" };
+    return { label: "Low", color: "text-emerald-500" };
   };
 
   return (
@@ -273,6 +274,8 @@ export default function TeacherSubmissions() {
                                 <Badge className={`text-[9px] px-1 py-0.2 border capitalize ${
                                   assessments[s.id].risk_level === "LOW" ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-500 hover:bg-emerald-500/10" :
                                   assessments[s.id].risk_level === "MEDIUM" ? "bg-amber-500/10 border-amber-500/20 text-amber-500 hover:bg-amber-500/10" :
+                                  assessments[s.id].risk_level === "HIGH" ? "bg-orange-500/10 border-orange-500/20 text-orange-500 hover:bg-orange-500/10" :
+                                  assessments[s.id].risk_level === "CRITICAL" ? "bg-red-500/10 border-red-500/20 text-red-500 hover:bg-red-500/10" :
                                   "bg-red-500/10 border-red-500/20 text-red-500 hover:bg-red-500/10"
                                 }`}>
                                   {assessments[s.id].risk_level}

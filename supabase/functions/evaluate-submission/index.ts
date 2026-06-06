@@ -204,11 +204,16 @@ serve(async (req: Request) => {
           winnowing_similarity: plagData.details?.winnowing_similarity || 0,
           levenshtein_distance: plagData.details?.levenshtein_distance || 0,
           token_similarity: plagData.details?.token_similarity || 0,
+          structural_similarity: plagData.plagiarism_details?.structural_similarity || 0,
           matched_submission_ids: plagData.plagiarism_details?.matched_submission_ids || [],
           matched_student_ids: plagData.plagiarism_details?.matched_student_ids || [],
           similarity_percentage: plagData.plagiarism_details?.similarity_percentage || 0,
           matched_student_count: plagData.plagiarism_details?.matched_student_count || 0,
           plagiarism_explanation: plagData.plagiarism_details?.plagiarism_explanation || "No matches found.",
+          score_breakdown: plagData.plagiarism_details?.score_breakdown || null,
+          match_metadata: plagData.plagiarism_details?.match_metadata || null,
+          behavioral_indicators: plagData.plagiarism_details?.behavioral_indicators || [],
+          style_inconsistency_detected: plagData.plagiarism_details?.style_inconsistency_detected || false
         };
       }
     } catch (plagErr) {
@@ -293,9 +298,24 @@ ${jsonSchemaPrompt}`;
 
     // Determine Risk Level (LOW, MEDIUM, HIGH)
     let riskLevel = "LOW";
-    if (plagiarismSimilarity >= 70 || correctnessScore < 30) {
+    if (plagiarismSimilarity >= 85) {
+      const astScore = plagiarismDetails.ast_similarity || 0;
+      const winnowingScore = plagiarismDetails.winnowing_similarity || 0;
+      const structuralScore = plagiarismDetails.structural_similarity || 0;
+      
+      const enginesAbove80 = 
+        (astScore >= 80 ? 1 : 0) + 
+        (winnowingScore >= 80 ? 1 : 0) + 
+        (structuralScore >= 80 ? 1 : 0);
+        
+      if (enginesAbove80 >= 2) {
+        riskLevel = "CRITICAL";
+      } else {
+        riskLevel = "HIGH";
+      }
+    } else if (plagiarismSimilarity >= 70) {
       riskLevel = "HIGH";
-    } else if (plagiarismSimilarity >= 30 || correctnessScore < 60 || qualityScore < 50) {
+    } else if (plagiarismSimilarity >= 40) {
       riskLevel = "MEDIUM";
     }
 
@@ -341,7 +361,7 @@ ${jsonSchemaPrompt}`;
     }
 
     // Save to legacy ai_evaluations to avoid breaking legacy code
-    const aiProb = riskLevel === "HIGH" ? 75 : riskLevel === "MEDIUM" ? 45 : 15;
+    const aiProb = riskLevel === "CRITICAL" ? 95 : riskLevel === "HIGH" ? 75 : riskLevel === "MEDIUM" ? 45 : 15;
     const { error: aiEvalErr } = await supabase.from("ai_evaluations").upsert(
       {
         submission_id,
@@ -369,7 +389,7 @@ ${jsonSchemaPrompt}`;
     }
 
     // Update submissions table
-    const submissionStatus = riskLevel === "HIGH" ? "flagged" : "evaluated";
+    const submissionStatus = (riskLevel === "HIGH" || riskLevel === "CRITICAL") ? "flagged" : "evaluated";
     await supabase
       .from("submissions")
       .update({ status: submissionStatus, score: overallScore })

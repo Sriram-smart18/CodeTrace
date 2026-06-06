@@ -363,7 +363,7 @@ CREATE TABLE IF NOT EXISTS public.assessment_results (
   correctness_score INTEGER NOT NULL,
   quality_score INTEGER NOT NULL,
   plagiarism_score INTEGER NOT NULL,
-  risk_level TEXT NOT NULL CHECK (risk_level IN ('LOW', 'MEDIUM', 'HIGH')),
+  risk_level TEXT NOT NULL CHECK (risk_level IN ('LOW', 'MEDIUM', 'HIGH', 'CRITICAL')),
   correctness_details JSONB NOT NULL DEFAULT '{}'::jsonb,
   quality_details JSONB NOT NULL DEFAULT '{}'::jsonb,
   plagiarism_details JSONB NOT NULL DEFAULT '{}'::jsonb,

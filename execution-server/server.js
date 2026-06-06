@@ -39,6 +39,21 @@ if (fs.existsSync(envPath)) {
   }
 }
 
+// Validate critical environment variables
+const startupSupabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+const startupSupabaseAnonKey = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
+const startupSupabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+console.log("[STARTUP VALIDATION] Checking Supabase Environment Variables:");
+console.log(`- SUPABASE_URL: ${startupSupabaseUrl ? "PRESENT" : "MISSING"} (Length: ${startupSupabaseUrl ? startupSupabaseUrl.length : 0})`);
+console.log(`- SUPABASE_ANON_KEY: ${startupSupabaseAnonKey ? "PRESENT" : "MISSING"} (Length: ${startupSupabaseAnonKey ? startupSupabaseAnonKey.length : 0})`);
+console.log(`- SUPABASE_SERVICE_ROLE_KEY: ${startupSupabaseServiceKey ? "PRESENT" : "MISSING"} (Length: ${startupSupabaseServiceKey ? startupSupabaseServiceKey.length : 0})`);
+if (!startupSupabaseUrl || !startupSupabaseAnonKey) {
+  console.warn("[STARTUP VALIDATION] WARNING: Supabase URL or Anon Key is missing. Socket authentication will fail!");
+} else {
+  console.log("[STARTUP VALIDATION] Supabase environment verified.");
+}
+
 // Configurable limits from Environment Variables
 const MAX_MEMORY_MB = parseInt(process.env.MAX_MEMORY_MB) || 256;
 const MAX_OUTPUT_BYTES = (parseInt(process.env.MAX_OUTPUT_MB) || 5) * 1024 * 1024;
@@ -277,23 +292,38 @@ const emitStatus = (sessionId, status) => {
 // Token verification helper using Supabase auth endpoint
 const verifyToken = async (token) => {
   try {
-    const supabaseUrl = process.env.VITE_SUPABASE_URL;
-    const anonKey = process.env.VITE_SUPABASE_ANON_KEY;
+    const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+    const anonKey = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
     if (!supabaseUrl || !anonKey) {
-      console.error('[SOCKET AUTH] Missing Supabase environment configuration');
+      console.error('[SOCKET AUTH] Missing Supabase environment configuration. Cannot verify token.');
       return null;
     }
+
+    const tokenLength = token ? token.length : 0;
+    const tokenHint = token ? `${token.substring(0, 8)}...${token.substring(token.length - 8)}` : 'null';
+    console.log(`[SOCKET AUTH] Verifying token of length ${tokenLength} (hint: ${tokenHint})`);
+
     const response = await fetch(`${supabaseUrl}/auth/v1/user`, {
       headers: {
         'apikey': anonKey,
         'Authorization': `Bearer ${token}`
       }
     });
+
     if (!response.ok) {
-      console.error(`[SOCKET AUTH] Auth endpoint responded with status ${response.status}`);
+      let errorDetail = '';
+      try {
+        const errJson = await response.json();
+        errorDetail = JSON.stringify(errJson);
+      } catch (parseErr) {
+        errorDetail = await response.text();
+      }
+      console.error(`[SOCKET AUTH] Auth endpoint verification failed. Status: ${response.status} ${response.statusText}. Detail: ${errorDetail}`);
       return null;
     }
+
     const user = await response.json();
+    console.log(`[SOCKET AUTH] Verification successful. Decoded user ID: ${user.id}`);
     return user;
   } catch (err) {
     console.error('[SOCKET AUTH] Token verification exception:', err);
@@ -304,19 +334,36 @@ const verifyToken = async (token) => {
 // Check if user has permission to the assignment using Supabase RLS
 const checkAssignmentPermission = async (token, assignmentId) => {
   try {
-    const supabaseUrl = process.env.VITE_SUPABASE_URL;
-    const anonKey = process.env.VITE_SUPABASE_ANON_KEY;
-    if (!supabaseUrl || !anonKey) return false;
-    
+    const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+    const anonKey = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
+    if (!supabaseUrl || !anonKey) {
+      console.error('[SOCKET AUTH] Missing Supabase environment configuration. Cannot check assignment permission.');
+      return false;
+    }
+
+    console.log(`[SOCKET AUTH] Checking assignment permission for Assignment: ${assignmentId}`);
+
     const response = await fetch(`${supabaseUrl}/rest/v1/assignments?id=eq.${assignmentId}&select=id`, {
       headers: {
         'apikey': anonKey,
         'Authorization': `Bearer ${token}`
       }
     });
-    if (!response.ok) return false;
+    if (!response.ok) {
+      let errorDetail = '';
+      try {
+        const errJson = await response.json();
+        errorDetail = JSON.stringify(errJson);
+      } catch (parseErr) {
+        errorDetail = await response.text();
+      }
+      console.error(`[SOCKET AUTH] Assignment permission check failed. Status: ${response.status} ${response.statusText}. Detail: ${errorDetail}`);
+      return false;
+    }
     const list = await response.json();
-    return list.length > 0;
+    const hasAccess = list.length > 0;
+    console.log(`[SOCKET AUTH] Assignment permission check result: ${hasAccess ? 'GRANTED' : 'DENIED'}`);
+    return hasAccess;
   } catch (err) {
     console.error('[SOCKET AUTH] Assignment permission check exception:', err);
     return false;
