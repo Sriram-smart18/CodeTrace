@@ -1,10 +1,22 @@
+import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
+import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
-import { GraduationCap, Users, BookOpen, Brain, Activity } from "lucide-react";
+import { GraduationCap, Users, BookOpen, Brain, Activity, Sun, Moon } from "lucide-react";
 
 export default function Index() {
+  const { resolvedTheme, setTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
+
+  // Prevent hydration mismatch
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const currentTheme = mounted ? resolvedTheme : "dark";
+
   return (
-    <div className="min-h-screen flex flex-col bg-background">
+    <div className="min-h-screen flex flex-col bg-background text-foreground transition-colors duration-300">
       {/* Header */}
       <header className="border-b bg-card/80 backdrop-blur-md sticky top-0 z-10">
         <div className="container mx-auto flex items-center justify-between h-16 px-4">
@@ -13,6 +25,21 @@ export default function Index() {
             <span className="text-xl font-bold text-foreground">CodeTrace</span>
           </div>
           <div className="flex items-center gap-2">
+            {/* Theme Toggle Button */}
+            <button
+              onClick={() => setTheme(currentTheme === "dark" ? "light" : "dark")}
+              className="h-9 w-9 flex items-center justify-center rounded-lg border border-border bg-card/50 text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-all focus-visible:outline-none mr-2"
+              title="Toggle Theme"
+            >
+              {!mounted ? (
+                <span className="h-4.5 w-4.5 rounded-full bg-muted animate-pulse" />
+              ) : currentTheme === "dark" ? (
+                <Sun className="h-4.5 w-4.5 text-amber-500" />
+              ) : (
+                <Moon className="h-4.5 w-4.5 text-indigo-600" />
+              )}
+            </button>
+
             <Button variant="ghost" size="sm" asChild>
               <Link to="/student/login">Student</Link>
             </Button>
