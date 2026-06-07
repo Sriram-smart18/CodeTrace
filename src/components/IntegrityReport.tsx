@@ -2,7 +2,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Brain, ShieldAlert, ShieldCheck, ShieldX, AlertTriangle,
   CheckCircle, ChevronDown, ClipboardX, Zap, Copy, Clock,
@@ -305,7 +304,7 @@ export function IntegrityReport({ evaluation: ev, assessment, open, onOpenChange
           </DialogTitle>
         </DialogHeader>
 
-        <ScrollArea className="flex-1 px-6 py-5">
+        <div className="flex-1 overflow-y-auto px-6 py-5 custom-scrollbar">
           <div className="space-y-5">
 
             {/* Faculty Review Banner */}
@@ -850,7 +849,7 @@ export function IntegrityReport({ evaluation: ev, assessment, open, onOpenChange
               Evaluated {new Date(ev.evaluated_at).toLocaleString()}
             </p>
           </div>
-        </ScrollArea>
+        </div>
       </DialogContent>
     </Dialog>
   );
