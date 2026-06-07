@@ -43,7 +43,7 @@ const createFallbackEvaluation = (submissionId: string, assessment?: AssessmentR
     submission_id: submissionId,
     correctness_score: assessment?.correctness_score ?? null,
     code_quality_score: assessment?.quality_score ?? null,
-    plagiarism_score: assessment ? (100 - assessment.plagiarism_score) : null,
+    plagiarism_score: assessment ? assessment.plagiarism_score : null,
     ai_probability_score: null,
     total_score: assessment?.overall_score ?? null,
     feedback: qDetails.feedback || "Evaluation completed.",
@@ -51,19 +51,19 @@ const createFallbackEvaluation = (submissionId: string, assessment?: AssessmentR
       strengths: qDetails.strengths || [],
       improvements: qDetails.improvements || [],
     },
-    plagiarism_details: null,
+    plagiarism_details: assessment?.plagiarism_details as any || null,
     risk_level: assessment?.risk_level || "low",
-    integrity_verdict: pDetails.plagiarism_explanation || null,
+    integrity_verdict: (assessment?.plagiarism_details as any)?.behavioral_integrity?.integrity_verdict || pDetails.plagiarism_explanation || null,
     suspicious_segments: null,
     ai_indicators: null,
     plagiarism_indicators: null,
-    faculty_review_recommended: assessment?.risk_level === "HIGH",
+    faculty_review_recommended: assessment?.risk_level === "HIGH" || assessment?.risk_level === "CRITICAL",
     style_inconsistency_detected: null,
     paste_suspected: null,
     complexity_jump_detected: null,
     behavioral_log: null,
     peer_similarity_scores: null,
-    highest_peer_similarity: assessment?.plagiarism_score ?? null,
+    highest_peer_similarity: (assessment?.plagiarism_details as any)?.similarity_percentage ?? null,
     peer_ai_verdict: pDetails.plagiarism_explanation || null,
     evaluated_at: assessment?.created_at || new Date().toISOString(),
   };
@@ -271,7 +271,7 @@ export default function TeacherSubmissions() {
                             <div className="flex flex-col gap-0.5">
                               <div className="flex items-center gap-1.5">
                                 <span className="font-bold text-xs text-foreground">Score: {assessments[s.id].overall_score}</span>
-                                <Badge className={`text-[9px] px-1 py-0.2 border capitalize ${
+                                <Badge className={`text-[9px] px-1 py-0.2 border capitalize font-semibold ${
                                   assessments[s.id].risk_level === "LOW" ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-500 hover:bg-emerald-500/10" :
                                   assessments[s.id].risk_level === "MEDIUM" ? "bg-amber-500/10 border-amber-500/20 text-amber-500 hover:bg-amber-500/10" :
                                   assessments[s.id].risk_level === "HIGH" ? "bg-orange-500/10 border-orange-500/20 text-orange-500 hover:bg-orange-500/10" :
@@ -282,7 +282,7 @@ export default function TeacherSubmissions() {
                                 </Badge>
                               </div>
                               <span className="text-[10px] text-muted-foreground whitespace-nowrap">
-                                C:{assessments[s.id].correctness_score} | Q:{assessments[s.id].quality_score} | P:{assessments[s.id].plagiarism_score}
+                                Integrity: {assessments[s.id].plagiarism_score} | Ownership: {(assessments[s.id].plagiarism_details as any)?.behavioral_integrity?.code_ownership_score ?? "—"}
                               </span>
                             </div>
                           ) : eval_ ? (

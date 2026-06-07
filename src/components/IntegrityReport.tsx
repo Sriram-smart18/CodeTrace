@@ -364,7 +364,9 @@ export function IntegrityReport({ evaluation: ev, assessment, open, onOpenChange
                 </div>
               )}
 
-              <ScoreBar label="Plagiarism Risk" score={assessment ? (100 - assessment.plagiarism_score) : ev.plagiarism_score} inverted />
+              <ScoreBar label="Academic Integrity" score={assessment ? assessment.plagiarism_score : ev.plagiarism_score} />
+              <ScoreBar label="Plagiarism Similarity" score={behavioralIntegrity ? behavioralIntegrity.similarity_percentage : (plagDetails?.similarity_percentage ?? ev.highest_peer_similarity ?? 0)} inverted />
+              <ScoreBar label="Code Ownership" score={behavioralIntegrity ? (behavioralIntegrity.code_ownership_score !== undefined ? behavioralIntegrity.code_ownership_score : null) : null} />
               {plagDetails && (
                 <div className="pl-4 -mt-1 space-y-2">
                   {/* Score Breakdown Table */}
@@ -455,8 +457,13 @@ export function IntegrityReport({ evaluation: ev, assessment, open, onOpenChange
               
               <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50 border border-border/40">
                 <span className="text-sm font-medium">Total Final Score</span>
-                <span className="font-mono text-lg font-bold text-primary">
-                  {(assessment ? assessment.overall_score : ev.total_score) ?? "—"}/{totalMarks}
+                <span className="font-mono text-lg font-bold text-primary flex items-center gap-1.5">
+                  <span>{(assessment ? assessment.overall_score : ev.total_score) ?? "—"}/{totalMarks}</span>
+                  {behavioralIntegrity && behavioralIntegrity.final_score_before_caps !== undefined && behavioralIntegrity.final_score_before_caps !== (behavioralIntegrity.final_score_after_caps ?? assessment?.overall_score ?? ev.total_score) && (
+                    <span className="text-xs text-muted-foreground line-through ml-2">
+                      {behavioralIntegrity.final_score_before_caps}/{totalMarks}
+                    </span>
+                  )}
                 </span>
               </div>
 
@@ -473,26 +480,21 @@ export function IntegrityReport({ evaluation: ev, assessment, open, onOpenChange
                   <span className="font-mono text-foreground font-medium">{assessment ? assessment.correctness_score : ev.correctness_score || 0}/100</span>
                 </div>
                 <div className="flex justify-between">
-                  <span>Behavioral Trust</span>
-                  <span>20%</span>
-                  <span className="font-mono text-foreground font-medium">{behavioralIntegrity ? behavioralIntegrity.trust_score : (100 - (ev.plagiarism_score || 0))}/100</span>
+                  <span>Academic Integrity Score</span>
+                  <span>25%</span>
+                  <span className="font-mono text-foreground font-medium">{assessment ? assessment.plagiarism_score : ev.plagiarism_score || 0}/100</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Code Quality</span>
+                  <span>15%</span>
+                  <span className="font-mono text-foreground font-medium">{assessment ? assessment.quality_score : ev.code_quality_score || 0}/100</span>
                 </div>
                 <div className="flex justify-between">
                   <span>Problem Solving Process</span>
                   <span>10%</span>
                   <span className="font-mono text-foreground font-medium">
-                    {behavioralIntegrity ? behavioralIntegrity.process_score || 70 : 70}/100
+                    {behavioralIntegrity ? (behavioralIntegrity.process_score || 0) : 70}/100
                   </span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Code Quality</span>
-                  <span>10%</span>
-                  <span className="font-mono text-foreground font-medium">{assessment ? assessment.quality_score : ev.code_quality_score || 0}/100</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Plagiarism Integrity</span>
-                  <span>10%</span>
-                  <span className="font-mono text-foreground font-medium">{assessment ? assessment.plagiarism_score : (100 - (ev.plagiarism_score || 0))}/100</span>
                 </div>
               </div>
             </div>
@@ -506,11 +508,13 @@ export function IntegrityReport({ evaluation: ev, assessment, open, onOpenChange
                     Behavioral Integrity Dashboard
                   </h4>
                   {(() => {
-                    const trust = behavioralIntegrity.trust_score;
-                    if (trust >= 80) return <Badge className="bg-emerald-500/10 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10 text-[10px] font-bold">🟢 Genuine Work</Badge>;
-                    if (trust >= 60) return <Badge className="bg-amber-500/10 border-amber-500/30 text-amber-400 hover:bg-amber-500/10 text-[10px] font-bold">🟡 Mixed Evidence</Badge>;
-                    if (trust >= 35) return <Badge className="bg-orange-500/10 border-orange-500/30 text-orange-400 hover:bg-orange-500/10 text-[10px] font-bold">🟠 Suspicious</Badge>;
-                    return <Badge className="bg-red-500/10 border-red-500/30 text-red-400 hover:bg-red-500/10 text-[10px] font-bold">🔴 Highly Suspicious</Badge>;
+                    const score = assessment ? assessment.plagiarism_score : ev.plagiarism_score;
+                    if (score === null || score === undefined) return null;
+                    if (score >= 90) return <Badge className="bg-emerald-500/10 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10 text-[10px] font-bold">🟢 Genuine Work</Badge>;
+                    if (score >= 70) return <Badge className="bg-blue-500/10 border-blue-500/30 text-blue-400 hover:bg-blue-500/10 text-[10px] font-bold">🟡 Mostly Genuine</Badge>;
+                    if (score >= 50) return <Badge className="bg-amber-500/10 border-amber-500/30 text-amber-400 hover:bg-amber-500/10 text-[10px] font-bold">🟠 Mixed Evidence</Badge>;
+                    if (score >= 30) return <Badge className="bg-orange-500/10 border-orange-500/30 text-orange-400 hover:bg-orange-500/10 text-[10px] font-bold">🔴 Suspicious</Badge>;
+                    return <Badge className="bg-red-500/10 border-red-500/30 text-red-400 hover:bg-red-500/10 text-[10px] font-bold">🚨 Highly Suspicious</Badge>;
                   })()}
                 </div>
 
@@ -533,48 +537,99 @@ export function IntegrityReport({ evaluation: ev, assessment, open, onOpenChange
                 </div>
 
                 {/* Telemetry Grid */}
-                <div className="grid grid-cols-2 gap-2 text-xs pt-1">
-                  <div className="p-2 rounded-lg bg-muted/20 border border-border/20">
-                    <div className="text-[10px] text-muted-foreground uppercase font-semibold">Paste Ratio</div>
-                    <div className="font-mono text-sm font-bold text-foreground mt-0.5">{(behavioralIntegrity.paste_ratio * 100).toFixed(1)}%</div>
-                  </div>
-                  <div className="p-2 rounded-lg bg-muted/20 border border-border/20">
-                    <div className="text-[10px] text-muted-foreground uppercase font-semibold">Typing Speed</div>
-                    <div className="font-mono text-sm font-bold text-foreground mt-0.5">{behavioralIntegrity.typing_speed} <span className="text-[10px] font-normal text-muted-foreground">CPM</span></div>
-                  </div>
-                  <div className="p-2 rounded-lg bg-muted/20 border border-border/20">
-                    <div className="text-[10px] text-muted-foreground uppercase font-semibold">Edit & Backspaces</div>
-                    <div className="font-mono text-sm font-bold text-foreground mt-0.5">{ev.behavioral_log?.deletion_frequency || 0} del / {behavioralIntegrity.snapshot_count ? (behavioralIntegrity.snapshot_count * 9) : 0} edits</div>
-                  </div>
-                  <div className="p-2 rounded-lg bg-muted/20 border border-border/20">
-                    <div className="text-[10px] text-muted-foreground uppercase font-semibold">Snapshots & Runs</div>
-                    <div className="font-mono text-sm font-bold text-foreground mt-0.5">{behavioralIntegrity.snapshot_count} snaps / {behavioralIntegrity.run_count || 0} runs</div>
-                  </div>
-                  <div className="p-2 rounded-lg bg-muted/20 border border-border/20">
-                    <div className="text-[10px] text-muted-foreground uppercase font-semibold">Tab Switches</div>
-                    <div className="font-mono text-sm font-bold text-foreground mt-0.5">{behavioralIntegrity.tab_switches} switches</div>
-                  </div>
-                  <div className="p-2 rounded-lg bg-muted/20 border border-border/20">
-                    <div className="text-[10px] text-muted-foreground uppercase font-semibold">Focus Loss Duration</div>
-                    <div className="font-mono text-sm font-bold text-foreground mt-0.5">{behavioralIntegrity.focus_loss_seconds} <span className="text-[10px] font-normal text-muted-foreground">sec</span></div>
-                  </div>
-                </div>
+                {(() => {
+                  const behLog = ev.behavioral_log || (plagDetails as any)?.behavioral_integrity || {};
+                  const typedCharacters = behLog.typedCharacters || (behLog as any).typed_characters || 0;
+                  const editCount = behLog.editCount || (behLog as any).edit_count || 0;
+                  const backspaceCount = behLog.backspaceCount || (behLog as any).backspace_count || 0;
+
+                  return (
+                    <div className="grid grid-cols-2 gap-2 text-xs pt-1">
+                      <div className="p-2 rounded-lg bg-muted/20 border border-border/20">
+                        <div className="text-[10px] text-muted-foreground uppercase font-semibold">Academic Integrity Score</div>
+                        <div className="font-mono text-sm font-bold text-primary mt-0.5">
+                          {behavioralIntegrity.academic_integrity_score !== undefined ? behavioralIntegrity.academic_integrity_score : ev.plagiarism_score}/100
+                        </div>
+                      </div>
+                      <div className="p-2 rounded-lg bg-muted/20 border border-border/20">
+                        <div className="text-[10px] text-muted-foreground uppercase font-semibold">Code Ownership Score</div>
+                        <div className="font-mono text-sm font-bold text-foreground mt-0.5">
+                          {behavioralIntegrity.code_ownership_score !== undefined ? behavioralIntegrity.code_ownership_score : "—"}/100
+                        </div>
+                      </div>
+                      <div className="p-2 rounded-lg bg-muted/20 border border-border/20">
+                        <div className="text-[10px] text-muted-foreground uppercase font-semibold">Telemetry Trust Score</div>
+                        <div className="font-mono text-sm font-bold text-foreground mt-0.5">{behavioralIntegrity.trust_score}%</div>
+                      </div>
+                      <div className="p-2 rounded-lg bg-muted/20 border border-border/20">
+                        <div className="text-[10px] text-muted-foreground uppercase font-semibold">Similarity Score</div>
+                        <div className="font-mono text-sm font-bold text-foreground mt-0.5">{behavioralIntegrity.similarity_percentage}%</div>
+                      </div>
+                      <div className="p-2 rounded-lg bg-muted/20 border border-border/20">
+                        <div className="text-[10px] text-muted-foreground uppercase font-semibold">Paste Ratio</div>
+                        <div className="font-mono text-sm font-bold text-foreground mt-0.5">{(behavioralIntegrity.paste_ratio * 100).toFixed(1)}%</div>
+                      </div>
+                      <div className="p-2 rounded-lg bg-muted/20 border border-border/20">
+                        <div className="text-[10px] text-muted-foreground uppercase font-semibold">Typed Characters</div>
+                        <div className="font-mono text-sm font-bold text-foreground mt-0.5">{typedCharacters} chars</div>
+                      </div>
+                      <div className="p-2 rounded-lg bg-muted/20 border border-border/20">
+                        <div className="text-[10px] text-muted-foreground uppercase font-semibold">Edits / Backspaces</div>
+                        <div className="font-mono text-sm font-bold text-foreground mt-0.5">{editCount} edits / {backspaceCount} del</div>
+                      </div>
+                      <div className="p-2 rounded-lg bg-muted/20 border border-border/20">
+                        <div className="text-[10px] text-muted-foreground uppercase font-semibold">Snapshots & Runs</div>
+                        <div className="font-mono text-sm font-bold text-foreground mt-0.5">{behavioralIntegrity.snapshot_count} snaps / {behavioralIntegrity.run_count || 0} runs</div>
+                      </div>
+                      <div className="p-2 rounded-lg bg-muted/20 border border-border/20">
+                        <div className="text-[10px] text-muted-foreground uppercase font-semibold">Focus Loss Time</div>
+                        <div className="font-mono text-sm font-bold text-foreground mt-0.5">{behavioralIntegrity.focus_loss_seconds} sec</div>
+                      </div>
+                      <div className="p-2 rounded-lg bg-muted/20 border border-border/20">
+                        <div className="text-[10px] text-muted-foreground uppercase font-semibold">Fraud Indicators</div>
+                        <div className="font-mono text-sm font-bold text-foreground mt-0.5">
+                          {behavioralIntegrity.fraud_indicator_count !== undefined ? behavioralIntegrity.fraud_indicator_count : "—"} triggered
+                        </div>
+                      </div>
+                      <div className="p-2 rounded-lg bg-muted/20 border border-border/20 col-span-2">
+                        <div className="text-[10px] text-muted-foreground uppercase font-semibold">Final Score Before / After Caps</div>
+                        <div className="font-mono text-sm font-bold text-foreground mt-0.5">
+                          Before: {behavioralIntegrity.final_score_before_caps ?? "—"} | After: {behavioralIntegrity.final_score_after_caps ?? "—"}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 {/* Evidence Flags */}
                 <div className="space-y-1 pt-1 text-xs">
                   <span className="text-[10px] uppercase text-muted-foreground font-semibold">Evidence Flags</span>
                   <div className="flex flex-wrap gap-1.5 mt-0.5">
+                    {behavioralIntegrity.evidence?.possible_ai_generation && (
+                      <Badge variant="outline" className="text-[9px] bg-purple-500/5 text-purple-400 border-purple-500/20">possible ai generation</Badge>
+                    )}
                     {behavioralIntegrity.evidence?.possible_external_solution && (
-                      <Badge variant="outline" className="text-[9px] uppercase bg-red-500/5 text-red-500 border-red-500/20">possible external solution</Badge>
+                      <Badge variant="outline" className="text-[9px] bg-red-500/5 text-red-500 border-red-500/20">possible external solution</Badge>
                     )}
                     {behavioralIntegrity.evidence?.quick_submit_after_paste && (
-                      <Badge variant="outline" className="text-[9px] uppercase bg-orange-500/5 text-orange-500 border-orange-500/20">quick submit after paste</Badge>
+                      <Badge variant="outline" className="text-[9px] bg-orange-500/5 text-orange-500 border-orange-500/20">quick submit after paste</Badge>
                     )}
-                    {behavioralIntegrity.evidence?.high_similarity_detected && (
-                      <Badge variant="outline" className="text-[9px] uppercase bg-amber-500/5 text-amber-500 border-amber-500/20">high similarity detected</Badge>
+                    {behavioralIntegrity.evidence?.minimal_editing && (
+                      <Badge variant="outline" className="text-[9px] bg-amber-500/5 text-amber-500 border-amber-500/20">minimal editing</Badge>
                     )}
-                    {!behavioralIntegrity.evidence?.possible_external_solution && !behavioralIntegrity.evidence?.quick_submit_after_paste && !behavioralIntegrity.evidence?.high_similarity_detected && (
-                      <div className="text-[11px] text-muted-foreground italic">No cheating markers detected.</div>
+                    {behavioralIntegrity.evidence?.minimal_debugging && (
+                      <Badge variant="outline" className="text-[9px] bg-yellow-500/5 text-yellow-500 border-yellow-500/20">minimal debugging</Badge>
+                    )}
+                    {behavioralIntegrity.evidence?.suspicious_input_pattern && (
+                      <Badge variant="outline" className="text-[9px] bg-pink-500/5 text-pink-500 border-pink-500/20">suspicious input pattern</Badge>
+                    )}
+                    {!behavioralIntegrity.evidence?.possible_ai_generation && 
+                     !behavioralIntegrity.evidence?.possible_external_solution && 
+                     !behavioralIntegrity.evidence?.quick_submit_after_paste && 
+                     !behavioralIntegrity.evidence?.minimal_editing && 
+                     !behavioralIntegrity.evidence?.minimal_debugging && 
+                     !behavioralIntegrity.evidence?.suspicious_input_pattern && (
+                      <div className="text-[11px] text-muted-foreground italic">No evidence flags triggered.</div>
                     )}
                   </div>
                 </div>

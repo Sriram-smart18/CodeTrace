@@ -983,7 +983,7 @@ export default function TeacherAssignmentDetail() {
                                     </Badge>
                                   </div>
                                   <span className="text-[10px] text-muted-foreground whitespace-nowrap">
-                                    C:{assessments[s.id].correctness_score} | Q:{assessments[s.id].quality_score} | P:{assessments[s.id].plagiarism_score}
+                                    Integrity: {assessments[s.id].plagiarism_score} | Ownership: {(assessments[s.id].plagiarism_details as any)?.behavioral_integrity?.code_ownership_score ?? "—"}
                                   </span>
                                 </div>
                               ) : (

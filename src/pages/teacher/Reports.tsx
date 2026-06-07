@@ -87,7 +87,7 @@ export default function TeacherReports() {
     const completed = reportItems.filter(r => r.status === "graded" || r.status === "completed").length;
     const completionRate = Math.round((completed / reportItems.length) * 100);
 
-    const highRiskCount = reportItems.filter(r => r.risk_level === "high").length;
+    const highRiskCount = reportItems.filter(r => r.risk_level?.toLowerCase() === "high" || r.risk_level?.toLowerCase() === "critical").length;
 
     return {
       avgScore,
@@ -110,22 +110,36 @@ export default function TeacherReports() {
       "Status",
       "Evaluation Score",
       "Submission Date",
-      "Plagiarism Index (%)",
+      "Similarity Score (%)",
+      "Academic Integrity Score (0-100)",
+      "Ownership Score (0-100)",
+      "Integrity Verdict",
       "AI Risk Rating"
     ];
 
     // Build row lines with proper string escapes
-    const rows = reportItems.map(item => [
-      `"${item.student_name.replace(/"/g, '""')}"`,
-      `"${item.student_uid.replace(/"/g, '""')}"`,
-      `"${item.email.replace(/"/g, '""')}"`,
-      `"${item.assignment_title.replace(/"/g, '""')}"`,
-      `"${item.status.toUpperCase()}"`,
-      item.score !== null ? item.score : "—",
-      `"${new Date(item.submitted_at).toLocaleString()}"`,
-      item.plagiarism_score !== null ? `${item.plagiarism_score}%` : "0%",
-      `"${item.risk_level.toUpperCase()}"`
-    ]);
+    const rows = reportItems.map(item => {
+      const plagDetails = (item as any).plagiarism_indicators;
+      const beh = plagDetails?.behavioral_integrity || {};
+      const similarity = beh.similarity_percentage ?? 0;
+      const ownership = beh.code_ownership_score !== undefined ? beh.code_ownership_score : "—";
+      const verdict = beh.integrity_verdict ?? "—";
+
+      return [
+        `"${item.student_name.replace(/"/g, '""')}"`,
+        `"${item.student_uid.replace(/"/g, '""')}"`,
+        `"${item.email.replace(/"/g, '""')}"`,
+        `"${item.assignment_title.replace(/"/g, '""')}"`,
+        `"${item.status.toUpperCase()}"`,
+        item.score !== null ? item.score : "—",
+        `"${new Date(item.submitted_at).toLocaleString()}"`,
+        `"${similarity}%"`,
+        item.plagiarism_score !== null ? item.plagiarism_score : "—",
+        `"${ownership}"`,
+        `"${verdict}"`,
+        `"${item.risk_level.toUpperCase()}"`
+      ];
+    });
 
     // Prepend UTF-8 BOM so MS Excel reads symbols correctly
     const csvContent = "\uFEFF" + [headers.join(","), ...rows.map(e => e.join(","))].join("\n");
@@ -367,10 +381,11 @@ export default function TeacherReports() {
                     )}
                     {reportType === "ai" && (
                       <>
-                        <th className="p-4 text-center">Copy Count</th>
-                        <th className="p-4 text-center">Plagiarism Index</th>
-                        <th className="p-4 text-center">Integrity Rating</th>
-                        <th className="p-4">Risk Level</th>
+                        <th className="p-4 text-center">Similarity Score</th>
+                        <th className="p-4 text-center">Academic Integrity Score</th>
+                        <th className="p-4 text-center">Ownership Score</th>
+                        <th className="p-4 text-center">Integrity Verdict</th>
+                        <th className="p-4 font-semibold">Risk Level</th>
                       </>
                     )}
                     {reportType === "activity" && (
@@ -423,32 +438,49 @@ export default function TeacherReports() {
                       )}
 
                       {/* AI Plagiarism tab */}
-                      {reportType === "ai" && (
-                        <>
-                          <td className="p-4 text-center font-mono">
-                            {(item.behavioral_summary as any)?.paste_count || 0} times
-                          </td>
-                          <td className="p-4 text-center font-mono font-bold">
-                            <span className={item.plagiarism_score && item.plagiarism_score > 60 ? "text-red-400" : "text-emerald-400"}>
-                              {item.plagiarism_score || 0}%
-                            </span>
-                          </td>
-                          <td className="p-4 text-center font-mono capitalize">
-                            {item.risk_level === "high" ? (
-                              <Badge className="bg-red-500/20 text-red-400 border-red-500/30 text-[9px] uppercase">FRAUD RISK</Badge>
-                            ) : (
-                              <Badge className="bg-emerald-500/20 text-emerald-400 border-emerald-500/30 text-[9px] uppercase">SECURE PASS</Badge>
-                            )}
-                          </td>
-                          <td className="p-4">
-                            <span className={`text-[10px] font-mono uppercase ${
-                              item.risk_level === "high" ? "text-red-400" : item.risk_level === "medium" ? "text-yellow-400" : "text-emerald-400"
-                            }`}>
-                              ● {item.risk_level} risk
-                            </span>
-                          </td>
-                        </>
-                      )}
+                      {reportType === "ai" && (() => {
+                        const plagDetails = (item as any).plagiarism_indicators;
+                        const beh = plagDetails?.behavioral_integrity || {};
+                        const similarity = beh.similarity_percentage ?? 0;
+                        const ownership = beh.code_ownership_score !== undefined ? beh.code_ownership_score : "—";
+                        const verdict = beh.integrity_verdict ?? "—";
+                        const risk = item.risk_level?.toLowerCase() || "low";
+
+                        return (
+                          <>
+                            <td className="p-4 text-center font-mono font-bold text-slate-200">
+                              {similarity}%
+                            </td>
+                            <td className="p-4 text-center font-mono font-bold text-primary">
+                              {item.plagiarism_score || 0}/100
+                            </td>
+                            <td className="p-4 text-center font-mono text-slate-200">
+                              {ownership}
+                            </td>
+                            <td className="p-4 text-center font-mono">
+                              <Badge className={
+                                (item.plagiarism_score || 0) >= 90 ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-500 hover:bg-emerald-500/10 text-[9px]" :
+                                (item.plagiarism_score || 0) >= 70 ? "bg-blue-500/10 border-blue-500/20 text-blue-400 hover:bg-blue-500/10 text-[9px]" :
+                                (item.plagiarism_score || 0) >= 50 ? "bg-amber-500/10 border-amber-500/20 text-amber-400 hover:bg-amber-500/10 text-[9px]" :
+                                (item.plagiarism_score || 0) >= 30 ? "bg-orange-500/10 border-orange-500/20 text-orange-400 hover:bg-orange-500/10 text-[9px]" :
+                                "bg-red-500/10 border-red-500/20 text-red-500 hover:bg-red-500/10 text-[9px] font-bold"
+                              }>
+                                {verdict}
+                              </Badge>
+                            </td>
+                            <td className="p-4">
+                              <span className={`text-[10px] font-mono uppercase ${
+                                risk === "critical" ? "text-red-500 font-bold" :
+                                risk === "high" ? "text-red-400" : 
+                                risk === "medium" ? "text-yellow-400" : 
+                                "text-emerald-400"
+                              }`}>
+                                ● {risk} risk
+                              </span>
+                            </td>
+                          </>
+                        );
+                      })()}
 
                       {/* Code Activity Metrics */}
                       {reportType === "activity" && (

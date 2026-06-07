@@ -206,7 +206,7 @@ export function useReportsQuery(
 
       const submissionIds = submissions.map((s) => s.id);
       const { data: evaluations } = submissionIds.length > 0
-        ? await supabase.from("ai_evaluations").select("submission_id, plagiarism_score, risk_level, integrity_verdict").in("submission_id", submissionIds)
+        ? await supabase.from("ai_evaluations").select("submission_id, plagiarism_score, risk_level, integrity_verdict, plagiarism_indicators").in("submission_id", submissionIds)
         : { data: [] };
 
       const evaluationMap = new Map(evaluations?.map((e) => [e.submission_id, e] as [string, typeof e]));
@@ -226,6 +226,7 @@ export function useReportsQuery(
           plagiarism_score: evalItem?.plagiarism_score || 0,
           risk_level: evalItem?.risk_level || "low",
           behavioral_summary: s.behavioral_log || {},
+          plagiarism_indicators: evalItem?.plagiarism_indicators || null,
         };
       });
 
