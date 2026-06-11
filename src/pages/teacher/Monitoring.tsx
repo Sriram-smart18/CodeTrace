@@ -67,6 +67,31 @@ export default function TeacherMonitoring() {
   // 2. Fetch Live Observability Heartbeats via React Query
   const { data: liveSessions, refetch: refetchSessions } = useLiveMonitoringQuery(teacherUser?.id);
 
+  const lastRefetchTimeRef = useRef(0);
+  const refetchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const throttledRefetchSessions = useCallback(() => {
+    const now = Date.now();
+    const COOLDOWN = 3000; // 3 seconds
+    if (now - lastRefetchTimeRef.current >= COOLDOWN) {
+      lastRefetchTimeRef.current = now;
+      refetchSessions();
+    } else {
+      if (refetchTimeoutRef.current) clearTimeout(refetchTimeoutRef.current);
+      refetchTimeoutRef.current = setTimeout(() => {
+        lastRefetchTimeRef.current = Date.now();
+        refetchSessions();
+      }, COOLDOWN - (now - lastRefetchTimeRef.current));
+    }
+  }, [refetchSessions]);
+
+  // Clean up on unmount
+  useEffect(() => {
+    return () => {
+      if (refetchTimeoutRef.current) clearTimeout(refetchTimeoutRef.current);
+    };
+  }, []);
+
   useEffect(() => {
     const loadData = async () => {
       if (!teacherUser?.id) return;
@@ -164,7 +189,7 @@ export default function TeacherMonitoring() {
           undefined,
           () => {
             console.log(`[REALTIME_EVENT_RECEIVED] monitoring_sessions update received`);
-            refetchSessions();
+            throttledRefetchSessions();
             console.log(`[TEACHER_UI_UPDATED] UI updated with monitoring session update`);
           }
         );
@@ -183,7 +208,7 @@ export default function TeacherMonitoring() {
       unsubActivity();
       unsubSessions();
     };
-  }, [teacherUser, refetchSessions]);
+  }, [teacherUser, throttledRefetchSessions]);
 
   useEffect(() => {
     if (scrollRef.current) {

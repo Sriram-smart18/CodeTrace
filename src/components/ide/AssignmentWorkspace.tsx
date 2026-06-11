@@ -327,6 +327,7 @@ export const AssignmentWorkspace: React.FC<AssignmentWorkspaceProps> = ({ assign
 
     term.onData((data) => {
       console.log("[XTERM KEY]", JSON.stringify(data));
+      resetActivityTimeoutRef.current?.();
 
       if (data.startsWith("\u001b[")) {
         return;
@@ -369,89 +370,8 @@ export const AssignmentWorkspace: React.FC<AssignmentWorkspaceProps> = ({ assign
     };
   }, []);
 
-  const handleRunCode = useCallback(() => {
-    if (execState === 'executing') return;
-    
-    lineBufferRef.current = "";
-    if (xtermRef.current) {
-      xtermRef.current.clear();
-      xtermRef.current.focus();
-    }
-
-    if (!session?.access_token) {
-      if (xtermRef.current) {
-        xtermRef.current.write(`\r\n\x1b[31m[Connection Error: No authentication token found]\x1b[0m\r\n`);
-      }
-      setExecState('idle');
-      return;
-    }
-
-    setExecState('executing');
-    logRun();
-    
-    const summary = getBehavioralSummary();
-    const pasteSnapshot = {
-      pasteCount: summary.paste_count,
-      totalPastedChars: summary.total_pasted_chars,
-      totalPastedLines: summary.total_pasted_lines,
-    };
-    trackRun(code, pasteSnapshot);
-    
-    const sessionId = crypto.randomUUID();
-    currentSessionIdRef.current = sessionId;
-
-    const socket = io(EXECUTION_SERVER_URL, {
-      auth: {
-        token: session.access_token
-      }
-    });
-    socketRef.current = socket;
-
-    socket.on("connect", () => {
-      console.log("[SOCKET CONNECT]");
-      socket.emit("run", {
-        sessionId,
-        language,
-        code,
-        userId: user?.id
-      });
-    });
-
-    socket.on("disconnect", () => {
-      console.log("[SOCKET DISCONNECT]");
-    });
-
-    socket.on("output", (data: string) => {
-      console.log("[STDOUT]", data);
-      if (xtermRef.current) {
-        xtermRef.current.write(data);
-      }
-    });
-
-    socket.on("exit", (exitCode: number) => {
-      console.log("[PROCESS CLOSE]", exitCode);
-      setExecState('idle');
-      socket.disconnect();
-      socketRef.current = null;
-    });
-
-    socket.on("status", (status) => {
-      if (status === 'killed' || status === 'finished') {
-        setExecState('idle');
-        socket.disconnect();
-        socketRef.current = null;
-      }
-    });
-    
-    socket.on("connect_error", (err) => {
-      if (xtermRef.current) {
-        xtermRef.current.write(`\r\n\x1b[31m[Connection Error: ${err.message}]\x1b[0m\r\n`);
-      }
-      setExecState('idle');
-      socket.disconnect();
-      socketRef.current = null;
-    });
-  }, [code, language, execState, trackRun, getBehavioralSummary, session?.access_token, user]);
+  const activityTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const resetActivityTimeoutRef = useRef<(() => void) | null>(null);
 
   const handleStopExecution = useCallback(() => {
     if (socketRef.current && currentSessionIdRef.current) {
@@ -463,6 +383,133 @@ export const AssignmentWorkspace: React.FC<AssignmentWorkspaceProps> = ({ assign
     }
     setExecState('idle');
   }, []);
+
+  const resetActivityTimeout = useCallback(() => {
+    if (activityTimeoutRef.current) {
+      clearTimeout(activityTimeoutRef.current);
+    }
+    activityTimeoutRef.current = setTimeout(() => {
+      console.warn("Execution timed out due to 30 seconds of inactivity.");
+      if (xtermRef.current) {
+        xtermRef.current.write("\r\n\x1b[33m[Warning: Execution timed out after 30 seconds of inactivity]\x1b[0m\r\n");
+      }
+      handleStopExecution();
+    }, 30000);
+  }, [handleStopExecution]);
+
+  const clearActivityTimeout = useCallback(() => {
+    if (activityTimeoutRef.current) {
+      clearTimeout(activityTimeoutRef.current);
+      activityTimeoutRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => {
+    resetActivityTimeoutRef.current = resetActivityTimeout;
+  }, [resetActivityTimeout]);
+
+  useEffect(() => {
+    if (execState !== 'executing') {
+      clearActivityTimeout();
+    }
+    return () => {
+      clearActivityTimeout();
+    };
+  }, [execState, clearActivityTimeout]);
+
+  const handleRunCode = useCallback(() => {
+    if (execState === 'executing') return;
+    
+    try {
+      lineBufferRef.current = "";
+      if (xtermRef.current) {
+        xtermRef.current.clear();
+        xtermRef.current.focus();
+      }
+
+      if (!session?.access_token) {
+        if (xtermRef.current) {
+          xtermRef.current.write(`\r\n\x1b[31m[Connection Error: No authentication token found]\x1b[0m\r\n`);
+        }
+        setExecState('idle');
+        return;
+      }
+
+      setExecState('executing');
+      logRun();
+      
+      const summary = getBehavioralSummary();
+      const pasteSnapshot = {
+        pasteCount: summary.paste_count,
+        totalPastedChars: summary.total_pasted_chars,
+        totalPastedLines: summary.total_pasted_lines,
+      };
+      trackRun(code, pasteSnapshot);
+      
+      const sessionId = crypto.randomUUID();
+      currentSessionIdRef.current = sessionId;
+
+      const socket = io(EXECUTION_SERVER_URL, {
+        auth: {
+          token: session.access_token
+        }
+      });
+      socketRef.current = socket;
+
+      socket.on("connect", () => {
+        resetActivityTimeout();
+        console.log("[SOCKET CONNECT]");
+        socket.emit("run", {
+          sessionId,
+          language,
+          code,
+          userId: user?.id
+        });
+      });
+
+      socket.on("disconnect", () => {
+        console.log("[SOCKET DISCONNECT]");
+      });
+
+      socket.on("output", (data: string) => {
+        console.log("[STDOUT]", data);
+        resetActivityTimeout();
+        if (xtermRef.current) {
+          xtermRef.current.write(data);
+        }
+      });
+
+      socket.on("exit", (exitCode: number) => {
+        console.log("[PROCESS CLOSE]", exitCode);
+        setExecState('idle');
+        socket.disconnect();
+        socketRef.current = null;
+      });
+
+      socket.on("status", (status) => {
+        if (status === 'killed' || status === 'finished') {
+          setExecState('idle');
+          socket.disconnect();
+          socketRef.current = null;
+        }
+      });
+      
+      socket.on("connect_error", (err) => {
+        if (xtermRef.current) {
+          xtermRef.current.write(`\r\n\x1b[31m[Connection Error: ${err.message}]\x1b[0m\r\n`);
+        }
+        setExecState('idle');
+        socket.disconnect();
+        socketRef.current = null;
+      });
+    } catch (err) {
+      console.error(err);
+      if (xtermRef.current) {
+        xtermRef.current.write(`\r\n\x1b[31m[Error starting execution: ${err instanceof Error ? err.message : String(err)}]\x1b[0m\r\n`);
+      }
+      setExecState('idle');
+    }
+  }, [code, language, execState, trackRun, getBehavioralSummary, session?.access_token, user, resetActivityTimeout]);
 
   const handleSubmitAssignment = useCallback(async () => {
     if (!assignmentId || !user?.id) return;

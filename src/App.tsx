@@ -14,6 +14,7 @@ import { IdeDiagnosticsPanel } from "@/components/ide/diagnostics/IdeDiagnostics
 import { ThemeProvider } from "next-themes";
 import { PwaUpdater } from "@/components/pwa/PwaUpdater";
 import { OfflineOverlay } from "@/components/pwa/OfflineOverlay";
+import { SessionTimeoutHandler } from "@/components/SessionTimeoutHandler";
 
 if (import.meta.env.DEV || import.meta.env.VITE_ENABLE_STRESS_TESTS === 'true') {
   import("@/utils/stressTestMode").then(m => m.stressTestEngine);
@@ -101,6 +102,7 @@ const App = () => (
           <IdeDiagnosticsPanel />
           <BrowserRouter>
           <AuthProvider>
+            <SessionTimeoutHandler />
             <Routes>
               <Route path="/" element={<Index />} />
               

@@ -74,6 +74,18 @@ export default function StudentClassrooms() {
 
   const handleJoin = async () => {
     if (!user || !code.trim()) return;
+
+    const codeUpper = code.trim().toUpperCase();
+    const alreadyEnrolled = classrooms.some(c => c.classroom_code?.toUpperCase() === codeUpper);
+    if (alreadyEnrolled) {
+      toast({
+        title: "Already enrolled",
+        description: "You are already enrolled in this classroom.",
+        variant: "destructive"
+      });
+      return;
+    }
+
     setJoining(true);
     try {
       // Enroll via secure RPC join_classroom

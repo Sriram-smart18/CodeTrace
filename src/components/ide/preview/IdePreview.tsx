@@ -95,19 +95,45 @@ export const IdePreview: React.FC = () => {
       }
 
       let html = htmlFile.content || "";
+      const matchedCssFiles = new Set<string>();
 
       // Inline CSS sheets
       filesList.forEach((file) => {
-        if (file.name.endsWith(".css") && file.content) {
-          const linkRegex = new RegExp(`<link[^>]*href=["']${file.name}["'][^>]*>`, "gi");
-          html = html.replace(linkRegex, `<style>${file.content}</style>`);
+        if (file.name.endsWith(".css")) {
+          const escapedName = file.name.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+          const linkRegex = new RegExp(`<link[^>]*href=["'](?:\\.\\/|\\/)?${escapedName}["'][^>]*>`, "gi");
+          if (linkRegex.test(html)) {
+            html = html.replace(linkRegex, `<style data-file="${file.name}">${file.content || ""}</style>`);
+            matchedCssFiles.add(file.name);
+          }
         }
       });
+
+      // Automatically inject CSS files into preview if not explicitly linked
+      let autoInjectedCss = "";
+      filesList.forEach((file) => {
+        if (file.name.endsWith(".css") && !matchedCssFiles.has(file.name)) {
+          autoInjectedCss += `\n<style data-auto-file="${file.name}">${file.content || ""}</style>`;
+        }
+      });
+
+      if (autoInjectedCss) {
+        if (html.includes("</head>")) {
+          html = html.replace("</head>", `${autoInjectedCss}\n</head>`);
+        } else if (html.includes("<head>")) {
+          html = html.replace("<head>", `<head>\n${autoInjectedCss}`);
+        } else if (html.includes("<body>")) {
+          html = html.replace("<body>", `<body>\n${autoInjectedCss}`);
+        } else {
+          html = autoInjectedCss + "\n" + html;
+        }
+      }
 
       // Inline JavaScript files with custom console interceptors
       filesList.forEach((file) => {
         if (file.name.endsWith(".js") && file.content) {
-          const scriptRegex = new RegExp(`<script[^>]*src=["']${file.name}["'][^>]*></script>`, "gi");
+          const escapedName = file.name.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+          const scriptRegex = new RegExp(`<script[^>]*src=["'](?:\\.\\/|\\/)?${escapedName}["'][^>]*><\\/script>|<script[^>]*src=["'](?:\\.\\/|\\/)?${escapedName}["'][^>]*\\/>`, "gi");
           html = html.replace(
             scriptRegex,
             `<script>
@@ -160,6 +186,17 @@ export const IdePreview: React.FC = () => {
   const [iframeUrl, setIframeUrl] = useState<string | null>(null);
   const iframeUrlRef = useRef<string | null>(null);
   const previousOutputRef = useRef<string | null>(null);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+
+  // Controlled updates to the iframe without triggering a full remount (eliminates white flash)
+  useEffect(() => {
+    if (!iframeUrl || !iframeRef.current) return;
+    try {
+      iframeRef.current.contentWindow?.location.replace(iframeUrl);
+    } catch (e) {
+      iframeRef.current.src = iframeUrl;
+    }
+  }, [iframeUrl]);
 
   // Debounce preview updates and manage ObjectURL memory lifecycle
   useEffect(() => {
@@ -183,7 +220,7 @@ export const IdePreview: React.FC = () => {
         iframeUrlRef.current = newUrl;
         return newUrl;
       });
-    }, 500); // 500ms debounce
+    }, 250); // 250ms debounce
 
     return () => {
       console.log('[EFFECT CLEANUP] IdePreview: debounce timer cleared');
@@ -232,17 +269,23 @@ export const IdePreview: React.FC = () => {
       {/* Embedded Iframe wrapped in Error Boundary */}
       <div className="flex-1 bg-white relative">
         <PreviewErrorBoundary>
-          {iframeUrl ? (
+          <>
+            {!iframeUrl && <div className="w-full h-full bg-white animate-pulse absolute inset-0" />}
             <iframe
-              key={iframeUrl} // Force total DOM remount on new Blob
-              src={iframeUrl}
-              className="w-full h-full border-none bg-white"
+              ref={iframeRef}
+              className={`w-full h-full border-none bg-white ${iframeUrl ? "" : "hidden"}`}
               sandbox="allow-scripts" // Strict sandbox (NO allow-same-origin to protect parent DOM)
               title="CodeTrace Preview Sandbox"
+              onLoad={() => {
+                console.log("[IdePreview] iframe onLoad triggered");
+                const state = useIdeStore.getState();
+                if (state.execState === "running") {
+                  state.executionComplete();
+                  addTerminalLog("[system] Preview rendering complete.");
+                }
+              }}
             />
-          ) : (
-            <div className="w-full h-full bg-white animate-pulse" />
-          )}
+          </>
         </PreviewErrorBoundary>
       </div>
     </div>

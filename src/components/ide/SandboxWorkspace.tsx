@@ -261,9 +261,54 @@ export const SandboxWorkspace: React.FC<SandboxWorkspaceProps> = ({
     }
   };
 
+  const activityTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const handleStopExecution = useCallback(() => {
+    if (socketRef.current && currentSessionIdRef.current) {
+      socketRef.current.emit("stop", {
+        sessionId: currentSessionIdRef.current
+      });
+      socketRef.current.disconnect();
+      socketRef.current = null;
+    }
+    setExecState('ready');
+    if (terminalRef.current) {
+      terminalRef.current.write("\r\n\x1b[31m$ Execution halted by operator.\x1b[0m\r\n");
+    }
+  }, [setExecState]);
+
+  const resetActivityTimeout = useCallback(() => {
+    if (activityTimeoutRef.current) {
+      clearTimeout(activityTimeoutRef.current);
+    }
+    activityTimeoutRef.current = setTimeout(() => {
+      console.warn("Execution timed out due to 30 seconds of inactivity.");
+      if (terminalRef.current) {
+        terminalRef.current.write("\r\n\x1b[33m[Warning: Execution timed out after 30 seconds of inactivity]\x1b[0m\r\n");
+      }
+      handleStopExecution();
+    }, 30000);
+  }, [handleStopExecution]);
+
+  const clearActivityTimeout = useCallback(() => {
+    if (activityTimeoutRef.current) {
+      clearTimeout(activityTimeoutRef.current);
+      activityTimeoutRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => {
+    if (execState !== 'running' && execState !== 'waiting') {
+      clearActivityTimeout();
+    }
+    return () => {
+      clearActivityTimeout();
+    };
+  }, [execState, clearActivityTimeout]);
+
   // Code Execution Logic (using Socket.IO endpoint)
   const handleRunCode = useCallback(async () => {
-    if (!activeFileId || execState === 'running') {
+    if (!activeFileId || execState === 'running' || execState === 'waiting') {
       if (!activeFileId) toast({ title: "No File Focused", description: "Select a script file in explorer sidebar to execute.", variant: "destructive" });
       return;
     }
@@ -279,26 +324,25 @@ export const SandboxWorkspace: React.FC<SandboxWorkspaceProps> = ({
       // Sync changes to cloud before running to keep cloud sync strategies up to date
       saveToSupabase(supabase);
 
+      const fileLanguage = fileNode.language || "javascript";
+      const isWebProject = fileLanguage === "html" || fileLanguage === "css" || (fileLanguage === "javascript" && ideMode === "builder");
+
       setExecState('running');
       if (terminalRef.current) {
         terminalRef.current.clear();
-        terminalRef.current.write("\x1b[32m$ Connecting to execution engine...\x1b[0m\r\n");
+        terminalRef.current.write(isWebProject ? "\x1b[32m$ Rendering HTML/CSS/JS preview...\x1b[0m\r\n" : "\x1b[32m$ Connecting to execution engine...\x1b[0m\r\n");
       }
 
       const modelUri = monaco.Uri.parse(`file:///${activeFileId}`);
       const model = monaco.editor.getModel(modelUri);
       const codeContent = model ? model.getValue() : (fileNode.content || "");
-      const fileLanguage = fileNode.language || "javascript";
 
-      if (fileLanguage === "html") {
-        if (terminalRef.current) {
-          terminalRef.current.write("[system] Running HTML layout in preview engine.\r\n");
-        }
+      if (isWebProject) {
         setIdeMode("builder");
-        setExecState('completed');
+        resetActivityTimeout();
         useIdeStore.getState().addRunHistory({
           fileName: fileNode.name,
-          language: "html",
+          language: fileLanguage,
           status: "completed",
           durationMs: Date.now() - startTime,
           fileId: activeFileId
@@ -325,6 +369,7 @@ export const SandboxWorkspace: React.FC<SandboxWorkspaceProps> = ({
       socketRef.current = socket;
 
       socket.on("connect", () => {
+        resetActivityTimeout();
         socket.emit("run", {
           sessionId,
           language: fileLanguage,
@@ -338,6 +383,7 @@ export const SandboxWorkspace: React.FC<SandboxWorkspaceProps> = ({
       });
 
       socket.on("output", (data: string) => {
+        resetActivityTimeout();
         // Check if script is requesting stdin / console prompt
         if (data.toLowerCase().includes("input(") || data.includes("?") || data.toLowerCase().includes("enter ") || data.toLowerCase().includes("type ")) {
           setExecState('waiting');
@@ -349,7 +395,7 @@ export const SandboxWorkspace: React.FC<SandboxWorkspaceProps> = ({
 
       socket.on("exit", (exitCode: number) => {
         const duration = Date.now() - startTime;
-        setExecState('completed');
+        setExecState('ready'); // Automatically set execution state = idle (mapped to ready)
         
         useIdeStore.getState().addRunHistory({
           fileName: fileNode.name,
@@ -376,7 +422,7 @@ export const SandboxWorkspace: React.FC<SandboxWorkspaceProps> = ({
         if (terminalRef.current) {
           terminalRef.current.write(`\r\n\x1b[31m[Connection Error: ${err.message}]\x1b[0m\r\n`);
         }
-        setExecState('error');
+        setExecState('ready'); // Reset state to ready (idle) on connection error
         
         useIdeStore.getState().addRunHistory({
           fileName: fileNode.name,
@@ -395,7 +441,7 @@ export const SandboxWorkspace: React.FC<SandboxWorkspaceProps> = ({
       if (terminalRef.current) {
         terminalRef.current.write(`\r\n\x1b[31m[Error: ${err instanceof Error ? err.message : String(err)}]\x1b[0m\r\n`);
       }
-      setExecState('error');
+      setExecState('ready'); // Reset state to ready (idle) on general error
       
       const currentNodes = useIdeStore.getState().nodesById;
       const fileNode = currentNodes[activeFileId];
@@ -409,7 +455,7 @@ export const SandboxWorkspace: React.FC<SandboxWorkspaceProps> = ({
         });
       }
     }
-  }, [activeFileId, execState, toast, saveToSupabase, session, session?.access_token, user, setExecState, setIdeMode]);
+  }, [activeFileId, execState, toast, saveToSupabase, session, session?.access_token, user, setExecState, setIdeMode, resetActivityTimeout, ideMode]);
 
   // Global code rerun listener
   useEffect(() => {
@@ -429,25 +475,12 @@ export const SandboxWorkspace: React.FC<SandboxWorkspaceProps> = ({
 
   const handleTerminalInput = (data: string) => {
     setExecState('running');
+    resetActivityTimeout();
     if (socketRef.current && currentSessionIdRef.current) {
       socketRef.current.emit("input", {
         sessionId: currentSessionIdRef.current,
         data
       });
-    }
-  };
-
-  const handleStopExecution = () => {
-    if (socketRef.current && currentSessionIdRef.current) {
-      socketRef.current.emit("stop", {
-        sessionId: currentSessionIdRef.current
-      });
-      socketRef.current.disconnect();
-      socketRef.current = null;
-    }
-    setExecState('ready');
-    if (terminalRef.current) {
-      terminalRef.current.write("\r\n\x1b[31m$ Execution halted by operator.\x1b[0m\r\n");
     }
   };
 
@@ -593,7 +626,7 @@ export const SandboxWorkspace: React.FC<SandboxWorkspaceProps> = ({
           </Button>
 
           {/* Execution triggers */}
-          {execState === 'running' ? (
+          {execState === 'running' || execState === 'waiting' ? (
             <Button 
               size="sm" 
               onClick={handleStopExecution} 

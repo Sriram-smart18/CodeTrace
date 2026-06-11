@@ -47,11 +47,13 @@ export interface IdeState {
   addTerminalLog: (log: string) => void;
   updateLayout: (updates: Partial<IdeLayoutState>) => void;
   saveToSupabase: (supabaseClient: any) => Promise<boolean>;
+  forceLocalSave: () => Promise<void>;
 
   // Polished actions
   setSavingStatus: (status: "idle" | "saving" | "saved" | "unsaved") => void;
   setCloseTabConfirmId: (id: string | null) => void;
   setExecState: (status: "ready" | "running" | "waiting" | "completed" | "error") => void;
+  executionComplete: () => void;
   updateSettings: (updates: Partial<EditorSettings>) => void;
   addRunHistory: (run: Omit<RunHistoryEntry, "id" | "timestamp">) => void;
   setRevealRequest: (req: { fileId: string; line: number; column: number; ts: number } | null) => void;
@@ -686,6 +688,10 @@ export const useIdeStore = create<IdeState>()((rawSet, get) => {
     setSavingStatus: (savingStatus) => set({ savingStatus }),
     setCloseTabConfirmId: (closeTabConfirmId) => set({ closeTabConfirmId }),
     setExecState: (execState) => set({ execState }),
+    executionComplete: () => {
+      console.log('[STORE ACTION] executionComplete');
+      set({ execState: "ready" });
+    },
     updateSettings: (updates) => {
       const nextSettings = { ...get().settings, ...updates };
       set({ settings: nextSettings });
@@ -732,6 +738,46 @@ export const useIdeStore = create<IdeState>()((rawSet, get) => {
       
       localStorage.setItem("tracecode-audit-logs", JSON.stringify(logs.slice(-500)));
       console.log(`[AUDIT LOG] [${newEntry.timestamp}] [User: ${userId}] Action: ${action}`, metadata);
+    },
+
+    forceLocalSave: async () => {
+      const { projectId, nodesById, openTabs, activeFileId, cursorPositions, layoutState } = get();
+      if (!projectId) return;
+
+      if (saveDebounceTimer) {
+        clearTimeout(saveDebounceTimer);
+        saveDebounceTimer = null;
+      }
+
+      set({ savingStatus: "saving" });
+
+      const dataToSave = {
+        projectId,
+        nodes: nodesById,
+        openTabs,
+        activeFileId,
+        cursorPositions,
+        layoutState,
+        terminalLogs: [],
+        updatedAt: Date.now()
+      };
+
+      try {
+        await saveProjectToDB(dataToSave);
+        const currentDirty = { ...get().dirtyFiles };
+        Object.keys(currentDirty).forEach((key) => {
+          currentDirty[key] = false;
+        });
+
+        set({
+          dirtyFiles: currentDirty,
+          savingStatus: "saved"
+        });
+        console.log("[IDE] Force auto-saved project state locally before logout.");
+      } catch (err) {
+        console.error("[IDE] Force auto-save error:", err);
+        set({ savingStatus: "idle" });
+      }
     },
 
     saveToSupabase: async (supabaseClient) => {

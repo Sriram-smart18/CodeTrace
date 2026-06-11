@@ -85,10 +85,21 @@ BEGIN
     RAISE EXCEPTION 'Invalid or inactive classroom code';
   END IF;
 
-  -- Enroll authenticated caller
-  INSERT INTO public.classroom_students (classroom_id, student_id)
-  VALUES (v_classroom_id, auth.uid())
-  ON CONFLICT (classroom_id, student_id) DO NOTHING;
+  -- Check if already enrolled to avoid unnecessary exception throwing
+  IF EXISTS (
+    SELECT 1 FROM public.classroom_students 
+    WHERE classroom_id = v_classroom_id AND student_id = auth.uid()
+  ) THEN
+    RAISE EXCEPTION 'You are already enrolled in this classroom.';
+  END IF;
+
+  -- Enroll authenticated caller with exception handling for race conditions
+  BEGIN
+    INSERT INTO public.classroom_students (classroom_id, student_id)
+    VALUES (v_classroom_id, auth.uid());
+  EXCEPTION WHEN unique_violation THEN
+    RAISE EXCEPTION 'You are already enrolled in this classroom.';
+  END;
 
   -- Return metadata
   RETURN json_build_object(

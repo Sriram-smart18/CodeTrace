@@ -461,6 +461,31 @@ export default function TeacherDashboard() {
     }
   }, [user]);
 
+  const lastLoadTimeRef = useRef(0);
+  const loadTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const loadDataThrottled = useCallback(() => {
+    const now = Date.now();
+    const COOLDOWN = 5000;
+    if (now - lastLoadTimeRef.current >= COOLDOWN) {
+      lastLoadTimeRef.current = now;
+      loadData();
+    } else {
+      if (loadTimeoutRef.current) clearTimeout(loadTimeoutRef.current);
+      loadTimeoutRef.current = setTimeout(() => {
+        lastLoadTimeRef.current = Date.now();
+        loadData();
+      }, COOLDOWN - (now - lastLoadTimeRef.current));
+    }
+  }, [loadData]);
+
+  // Clean up timer on unmount
+  useEffect(() => {
+    return () => {
+      if (loadTimeoutRef.current) clearTimeout(loadTimeoutRef.current);
+    };
+  }, []);
+
   const initializedRef = useRef(false);
 
   useEffect(() => {
@@ -499,7 +524,7 @@ export default function TeacherDashboard() {
                 icon: "code"
               };
               setRealtimeLogs(prev => [newLog, ...prev].slice(0, 12));
-              loadData();
+              loadDataThrottled();
             }
           }
         }
@@ -538,7 +563,7 @@ export default function TeacherDashboard() {
               icon: "user"
             };
             setRealtimeLogs(prev => [newLog, ...prev].slice(0, 12));
-            loadData();
+            loadDataThrottled();
           }
         }
       );
@@ -551,7 +576,7 @@ export default function TeacherDashboard() {
       unsubSubmissions();
       unsubEnrollments();
     };
-  }, [user, loadData]);
+  }, [user, loadData, loadDataThrottled]);
 
   const containerVariants = {
     hidden: { opacity: 0 },
