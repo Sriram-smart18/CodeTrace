@@ -48,6 +48,8 @@ export interface IdeState {
   updateLayout: (updates: Partial<IdeLayoutState>) => void;
   saveToSupabase: (supabaseClient: any) => Promise<boolean>;
   forceLocalSave: () => Promise<void>;
+  clearSyncInterval: () => void;
+
 
   // Polished actions
   setSavingStatus: (status: "idle" | "saving" | "saved" | "unsaved") => void;
@@ -244,12 +246,12 @@ export const useIdeStore = create<IdeState>()((rawSet, get) => {
     });
 
     if (!hasChanges) {
-      console.log("[IDE] recursive update prevented: duplicate state set");
+      if (import.meta.env.DEV) {
+        console.log("[IDE] recursive update prevented: duplicate state set");
+      }
       return;
     }
 
-    console.log("[STORE UPDATE]", Object.keys(updates));
-    console.trace("[STORE WRITE]", Object.keys(updates));
     rawSet(updates);
   };
 
@@ -779,6 +781,15 @@ export const useIdeStore = create<IdeState>()((rawSet, get) => {
         set({ savingStatus: "idle" });
       }
     },
+
+    clearSyncInterval: () => {
+      if (typeof window !== "undefined" && (window as any).supabaseSyncInterval) {
+        clearInterval((window as any).supabaseSyncInterval);
+        (window as any).supabaseSyncInterval = null;
+        console.log("[useIdeStore] Periodic cloud sync interval cleared.");
+      }
+    },
+
 
     saveToSupabase: async (supabaseClient) => {
       const { projectId, nodesById, openTabs, activeFileId, cursorPositions, layoutState } = get();

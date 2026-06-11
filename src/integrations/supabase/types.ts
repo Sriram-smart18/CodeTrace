@@ -692,6 +692,7 @@ export type Database = {
           email: string
           id: string
           is_suspended: boolean
+          is_deleted: boolean
           name: string
           role: Database["public"]["Enums"]["app_role"]
           uid: string | null
@@ -706,6 +707,7 @@ export type Database = {
           email: string
           id?: string
           is_suspended?: boolean
+          is_deleted?: boolean
           name: string
           role?: Database["public"]["Enums"]["app_role"]
           uid?: string | null
@@ -720,6 +722,7 @@ export type Database = {
           email?: string
           id?: string
           is_suspended?: boolean
+          is_deleted?: boolean
           name?: string
           role?: Database["public"]["Enums"]["app_role"]
           uid?: string | null

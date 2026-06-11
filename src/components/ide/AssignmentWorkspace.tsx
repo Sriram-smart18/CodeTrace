@@ -29,8 +29,6 @@ interface AssignmentWorkspaceProps {
 const EXECUTION_SERVER_URL = import.meta.env.VITE_EXECUTION_SERVER_URL || "http://localhost:3001";
 
 export const AssignmentWorkspace: React.FC<AssignmentWorkspaceProps> = ({ assignmentId }) => {
-  console.count('[ASSIGNMENT WORKSPACE RENDER]');
-  
   const navigate = useNavigate();
   const { toast } = useToast();
   const { user, session } = useAuth();
@@ -47,6 +45,14 @@ export const AssignmentWorkspace: React.FC<AssignmentWorkspaceProps> = ({ assign
   
   type TerminalMode = 'idle' | 'executing';
   const [execState, setExecState] = useState<TerminalMode>('idle');
+
+  useEffect(() => {
+    (window as any).__codetrace_is_executing = (execState === 'executing');
+    return () => {
+      (window as any).__codetrace_is_executing = false;
+    };
+  }, [execState]);
+
   
   const [submitting, setSubmitting] = useState(false);
   const [isLocked, setIsLocked] = useState(false);
@@ -509,7 +515,7 @@ export const AssignmentWorkspace: React.FC<AssignmentWorkspaceProps> = ({ assign
       }
       setExecState('idle');
     }
-  }, [code, language, execState, trackRun, getBehavioralSummary, session?.access_token, user, resetActivityTimeout]);
+  }, [code, language, execState, trackRun, getBehavioralSummary, session?.access_token, user, resetActivityTimeout, logRun]);
 
   const handleSubmitAssignment = useCallback(async () => {
     if (!assignmentId || !user?.id) return;

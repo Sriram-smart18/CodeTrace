@@ -9,7 +9,6 @@ import { SandboxWorkspace } from "@/components/ide/SandboxWorkspace";
 import { Tables } from "@/integrations/supabase/types";
 
 export default function ProjectBuilder() {
-  console.count('[PROJECT BUILDER RENDER]');
   const { assignmentId } = useParams<{ assignmentId: string }>();
   const navigate = useNavigate();
   const { user, loading: authLoading } = useAuth();

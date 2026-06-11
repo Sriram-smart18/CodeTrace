@@ -937,7 +937,7 @@ serve(async (req: Request) => {
     const topMatch = comparisonResults[0];
 
     // Explainable score details
-    let details = {
+    const details = {
       ast_similarity: topMatch?.ast_similarity ?? 0,
       winnowing_similarity: topMatch?.winnowing_similarity ?? 0,
       levenshtein_distance: topMatch?.levenshtein_distance ?? 0,

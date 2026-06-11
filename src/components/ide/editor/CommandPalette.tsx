@@ -23,8 +23,6 @@ interface CommandPaletteProps {
 }
 
 export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose, defaultMode, extraCommands = [] }) => {
-  console.count('[COMMAND PALETTE RENDER]');
-
   const { toast } = useToast();
   const { theme, setTheme } = useTheme();
 
@@ -96,10 +94,6 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose,
       ...extraCommands
     ];
   }, [sidebarOpen, terminalOpen, updateLayout, setTerminalLogs, saveToSupabase, toast, extraCommands, theme, setTheme]);
-
-  useEffect(() => {
-    console.log('[COMMAND PALETTE COMMAND COUNT]', commandList.length);
-  }, [commandList]);
 
   // Filter items based on mode and query
   const filteredItems = useMemo(() => {

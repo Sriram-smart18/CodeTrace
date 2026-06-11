@@ -28,7 +28,6 @@ import StudentSignup from "./pages/student/Signup";
 import TeacherLogin from "./pages/teacher/Login";
 import TeacherSignup from "./pages/teacher/Signup";
 import AdminLogin from "./pages/admin/Login";
-import AdminSignup from "./pages/admin/Signup";
 
 // Route loader skeleton component
 const RouteLoader = ({ message = "Loading component..." }: { message?: string }) => (
@@ -85,6 +84,7 @@ const AdminDashboard = withSuspense(lazy(() => import("./pages/admin/Dashboard")
 const AdminTeachers = withSuspense(lazy(() => import("./pages/admin/Teachers")), "Loading educator records...");
 const AdminStudents = withSuspense(lazy(() => import("./pages/admin/Students")), "Loading student profiles...");
 const AdminAnalytics = withSuspense(lazy(() => import("./pages/admin/Analytics")), "Loading SaaS metrics engine...");
+const AdminUsers = withSuspense(lazy(() => import("./pages/admin/Users")), "Loading user manager...");
 
 loader.config({ monaco });
 
@@ -140,10 +140,10 @@ const App = () => (
 
               {/* ── Admin routes ── */}
               <Route path="/admin/login" element={<AdminLogin />} />
-              <Route path="/admin/signup" element={<AdminSignup />} />
               <Route path="/admin/dashboard" element={<ProtectedRoute requiredRole="admin"><AdminDashboard /></ProtectedRoute>} />
               <Route path="/admin/teachers" element={<ProtectedRoute requiredRole="admin"><AdminTeachers /></ProtectedRoute>} />
               <Route path="/admin/students" element={<ProtectedRoute requiredRole="admin"><AdminStudents /></ProtectedRoute>} />
+              <Route path="/admin/users" element={<ProtectedRoute requiredRole="admin"><AdminUsers /></ProtectedRoute>} />
               <Route path="/admin/analytics" element={<ProtectedRoute requiredRole="admin"><AdminAnalytics /></ProtectedRoute>} />
 
               <Route path="*" element={<NotFound />} />

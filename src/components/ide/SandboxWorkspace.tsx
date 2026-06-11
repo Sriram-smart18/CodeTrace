@@ -79,8 +79,9 @@ export const SandboxWorkspace: React.FC<SandboxWorkspaceProps> = ({
   initialMode = "editor",
   onBack
 }) => {
-  console.count('[SANDBOX WORKSPACE RENDER]');
-  console.log('[IDE MODE] SANDBOX');
+  if (import.meta.env.DEV) {
+    console.log('[IDE MODE] SANDBOX');
+  }
   const navigate = useNavigate();
   const { toast } = useToast();
   const { user, session } = useAuth();
@@ -455,7 +456,7 @@ export const SandboxWorkspace: React.FC<SandboxWorkspaceProps> = ({
         });
       }
     }
-  }, [activeFileId, execState, toast, saveToSupabase, session, session?.access_token, user, setExecState, setIdeMode, resetActivityTimeout, ideMode]);
+  }, [activeFileId, execState, toast, saveToSupabase, session, user, setExecState, setIdeMode, resetActivityTimeout, ideMode]);
 
   // Global code rerun listener
   useEffect(() => {

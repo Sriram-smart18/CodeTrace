@@ -11,7 +11,7 @@ interface AuthContextType {
   user: User | null;
   profile: Profile | null;
   loading: boolean;
-  signUp: (email: string, password: string, name: string, role: "student" | "teacher" | "admin", uid?: string) => Promise<{ data?: any; error: any }>;
+  signUp: (email: string, password: string, name: string, role: "student" | "teacher", uid?: string) => Promise<{ data?: unknown; error: { name: string; message: string; status: number; code: string } | Error | null }>;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
 }
@@ -64,7 +64,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => subscription.unsubscribe();
   }, []);
 
-  const signUp = async (email: string, password: string, name: string, role: "student" | "teacher" | "admin", uid?: string) => {
+  const signUp = async (email: string, password: string, name: string, role: "student" | "teacher", uid?: string) => {
+    if ((role as string) === "admin") {
+      return { 
+        error: { 
+          name: "AuthApiError", 
+          message: "Administrator accounts cannot be created through registration.",
+          status: 403,
+          code: "admin_registration_restricted"
+        } 
+      };
+    }
+
     const { data, error } = await supabase.auth.signUp({
       email,
       password,

@@ -44,7 +44,6 @@ class PreviewErrorBoundary extends React.Component<{ children: React.ReactNode }
 }
 
 export const IdePreview: React.FC = () => {
-  console.count('[RENDER] IdePreview');
   const addTerminalLog = useIdeStore((state) => state.addTerminalLog);
   const previewOpen = useIdeStore((state) => state.layoutState.previewOpen);
 
@@ -100,7 +99,7 @@ export const IdePreview: React.FC = () => {
       // Inline CSS sheets
       filesList.forEach((file) => {
         if (file.name.endsWith(".css")) {
-          const escapedName = file.name.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+          const escapedName = file.name.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&');
           const linkRegex = new RegExp(`<link[^>]*href=["'](?:\\.\\/|\\/)?${escapedName}["'][^>]*>`, "gi");
           if (linkRegex.test(html)) {
             html = html.replace(linkRegex, `<style data-file="${file.name}">${file.content || ""}</style>`);
@@ -132,7 +131,7 @@ export const IdePreview: React.FC = () => {
       // Inline JavaScript files with custom console interceptors
       filesList.forEach((file) => {
         if (file.name.endsWith(".js") && file.content) {
-          const escapedName = file.name.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+          const escapedName = file.name.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&');
           const scriptRegex = new RegExp(`<script[^>]*src=["'](?:\\.\\/|\\/)?${escapedName}["'][^>]*><\\/script>|<script[^>]*src=["'](?:\\.\\/|\\/)?${escapedName}["'][^>]*\\/>`, "gi");
           html = html.replace(
             scriptRegex,

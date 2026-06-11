@@ -30,9 +30,6 @@ interface ExplorerItemProps {
 const EMPTY_ARRAY: string[] = [];
 
 export const ExplorerItem: React.FC<ExplorerItemProps> = React.memo(({ nodeId, depth }) => {
-  console.count('[ExplorerItem render]');
-  console.log('[Selector changed]', nodeId);
-
   const node = useIdeStore((state) => state.nodesById[nodeId]);
   const childrenIds = useIdeStore((state) => state.childrenByParentId[nodeId] ?? EMPTY_ARRAY);
   const activeFileId = useIdeStore((state) => state.activeFileId);

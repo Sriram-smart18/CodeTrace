@@ -12,7 +12,6 @@ interface EditorState {
 }
 
 export function useEditorPersistence(userId: string | undefined, assignmentId: string | undefined) {
-  console.count('[RENDER] useEditorPersistence');
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Hydration refs & flags to prevent load-save loops

@@ -32,19 +32,20 @@ export default function AdminSignup() {
     const { error } = await signUp(email, password, name, "admin");
     
     if (error) {
+      const errObj = error as { message: string; status?: number; code?: string; name?: string };
       console.error("[ADMIN SIGNUP] Error returned during signup:", {
-        message: error.message,
-        status: (error as any).status,
-        code: (error as any).code
+        message: errObj.message,
+        status: errObj.status,
+        code: errObj.code
       });
       
       let title = "Signup Failed";
-      let description = error.message;
+      let description = errObj.message;
       let shouldRedirectToLogin = false;
 
-      const errorMessageLower = error.message.toLowerCase();
-      const errorCode = (error as any).code;
-      const errorStatus = (error as any).status;
+      const errorMessageLower = errObj.message.toLowerCase();
+      const errorCode = errObj.code;
+      const errorStatus = errObj.status;
 
       if (errorCode === "user_already_exists" || errorStatus === 409 || errorMessageLower.includes("already registered") || errorMessageLower.includes("already exists")) {
         title = "Account Already Exists";

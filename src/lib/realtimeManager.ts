@@ -28,59 +28,8 @@ class RealtimeManager {
   private channels = new Map<string, ChannelEntry>();
   // Maps individual client keys to their respective deterministic channel keys
   private keyToChannelKeyMap = new Map<string, string>();
-  private visibilityTimeout?: NodeJS.Timeout;
-  private isPaused = false;
-  private pendingResubscriptions: SubscribeParams[] = [];
+  constructor() {}
 
-  constructor() {
-    if (typeof document !== 'undefined') {
-      document.addEventListener('visibilitychange', this.handleVisibilityChange);
-    }
-  }
-
-  private handleVisibilityChange = () => {
-    if (document.hidden) {
-      this.visibilityTimeout = setTimeout(() => {
-        console.log('[Realtime] Tab hidden for 5m. Pausing channels to save backend resources.');
-        this.pauseAllChannels();
-      }, 5 * 60 * 1000); // 5 minutes inactivity
-    } else {
-      if (this.visibilityTimeout) clearTimeout(this.visibilityTimeout);
-      this.resumeAllChannels();
-    }
-  };
-
-  private pauseAllChannels() {
-    if (this.isPaused) return;
-    this.isPaused = true;
-    // We don't want to lose the config for resubscribing, so we must store them
-    // RealtimeManager currently doesn't store full config per channel, 
-    // but the consumers will re-subscribe if they remount.
-    // However, to be safe and resume seamlessly, we just remove the physical channels,
-    // and rely on React components to re-run effects OR we rebuild them.
-    // For simplicity, we just disconnect the global supabase realtime socket to pause everything.
-    supabase.removeAllChannels();
-  }
-
-  private resumeAllChannels() {
-    if (!this.isPaused) return;
-    this.isPaused = false;
-    console.log('[Realtime] Tab visible. Resuming channels.');
-    
-    // We trigger a global reconnect. Supabase automatically re-establishes channels if tracked internally, 
-    // but if we removed them, we'd need to re-add them. 
-    // Instead of removeAllChannels, let's just let the application layer handle it, OR 
-    // we can iterate `this.channels` and manually recreate `supabase.channel(key)`.
-    // Actually, calling `supabase.realtime.connect()` will just re-connect the socket.
-    
-    // Clear our maps to force re-subscribing from the React layer if needed, 
-    // or just let the socket reconnect.
-    // Since we used `removeAllChannels()`, we clear our local state to force UI to remount/resync if they rely on it.
-    this.channels.clear();
-    this.keyToChannelKeyMap.clear();
-    // Dispatch a custom event to tell the app to refresh data if necessary
-    window.dispatchEvent(new Event('app:realtime:resume'));
-  }
 
   public getActiveChannelCount(): number {
     return this.channels.size;
@@ -99,10 +48,7 @@ class RealtimeManager {
 
   public subscribeToChannel(params: SubscribeParams): void {
     const { key, channelName, config, callback } = params;
-    if (this.isPaused) {
-      this.pendingResubscriptions.push(params);
-      return;
-    }
+
 
     try {
       const channelKey = this.getDeterministicKey(channelName, config);

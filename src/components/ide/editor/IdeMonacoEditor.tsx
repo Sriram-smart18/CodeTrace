@@ -22,20 +22,11 @@ let modelAccessQueue: string[] = [];
 let activeEditorInstances = 0;
 
 export const IdeMonacoEditor: React.FC = () => {
-  console.count('[MONACO RENDER]');
   const activeFileId = useIdeStore((state) => state.activeFileId);
   const settings = useIdeStore((state) => state.settings);
-  console.log('[MONACO FILE]', activeFileId);
   
   const { theme } = useTheme();
   const editorTheme = theme === "light" ? "vs" : "vs-dark";
-
-  useEffect(() => {
-    console.count('[MONACO MOUNT]');
-    return () => {
-      console.log('[MONACO UNMOUNT]');
-    };
-  }, []);
 
   // Extract only the active file's name dynamically as a primitive to avoid complex object equality issues in Zustand v5.
   const activeFileName = useIdeStore(

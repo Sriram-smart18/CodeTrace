@@ -42,7 +42,9 @@ export function SessionTimeoutHandler() {
 
       // SAFETY CHECKS: Never logout during active code execution, submission, or critical save operations
       const storeState = useIdeStore.getState();
-      const isExecuting = storeState.execState === "running" || storeState.execState === "waiting";
+      const isExecuting = storeState.execState === "running" || 
+                          storeState.execState === "waiting" || 
+                          !!(window as unknown as { __codetrace_is_executing?: boolean }).__codetrace_is_executing;
       const isSaving = storeState.saving || storeState.savingStatus === "saving";
       
       if (isExecuting || isSaving) {
@@ -63,6 +65,16 @@ export function SessionTimeoutHandler() {
         }
       } catch (err) {
         console.error("Failed to auto-save editor contents on timeout logout:", err);
+      }
+
+      // 1b. Clear Zustand store periodic sync interval
+      try {
+        const clearSyncInterval = useIdeStore.getState().clearSyncInterval;
+        if (clearSyncInterval) {
+          clearSyncInterval();
+        }
+      } catch (err) {
+        console.error("Failed to clear periodic cloud sync interval on timeout logout:", err);
       }
 
       // 2. Clear activity markers

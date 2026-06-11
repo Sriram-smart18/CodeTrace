@@ -58,12 +58,8 @@ export default function AdminLogin() {
                 {loading ? "Signing in..." : "Sign In"}
               </Button>
             </form>
-            <div className="mt-4 flex items-center justify-between text-sm">
+            <div className="mt-4 flex items-center justify-center text-sm">
               <Link to="/forgot-password" style={{ color: "rgb(156 163 175)" }} className="hover:text-foreground hover:underline">Forgot password?</Link>
-              <div className="text-muted-foreground">
-                New admin?{" "}
-                <Link to="/admin/signup" className="text-primary hover:underline font-medium">Register</Link>
-              </div>
             </div>
           </CardContent>
         </Card>

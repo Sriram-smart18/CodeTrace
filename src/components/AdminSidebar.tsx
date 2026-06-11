@@ -1,4 +1,4 @@
-import { LayoutDashboard, Users, GraduationCap, BarChart3, LogOut, Shield } from "lucide-react";
+import { LayoutDashboard, Users, GraduationCap, BarChart3, LogOut, Shield, UserCog } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useAuth } from "@/contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
@@ -17,6 +17,7 @@ import {
 
 const items = [
   { title: "Dashboard", url: "/admin/dashboard", icon: LayoutDashboard },
+  { title: "User Management", url: "/admin/users", icon: UserCog },
   { title: "Teachers", url: "/admin/teachers", icon: GraduationCap },
   { title: "Students", url: "/admin/students", icon: Users },
   { title: "Analytics", url: "/admin/analytics", icon: BarChart3 },
