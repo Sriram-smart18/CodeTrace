@@ -11,7 +11,7 @@ interface AuthContextType {
   user: User | null;
   profile: Profile | null;
   loading: boolean;
-  signUp: (email: string, password: string, name: string, role: "student" | "teacher", uid?: string) => Promise<{ data?: unknown; error: { name: string; message: string; status: number; code: string } | Error | null }>;
+  signUp: (email: string, password: string, name: string, role: "student" | "teacher" | "admin", uid?: string) => Promise<{ data?: unknown; error: { name: string; message: string; status: number; code: string } | Error | null }>;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
 }
@@ -64,8 +64,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => subscription.unsubscribe();
   }, []);
 
-  const signUp = async (email: string, password: string, name: string, role: "student" | "teacher", uid?: string) => {
-    if ((role as string) === "admin") {
+  const signUp = async (email: string, password: string, name: string, role: "student" | "teacher" | "admin", uid?: string) => {
+    if (role === "admin") {
       return { 
         error: { 
           name: "AuthApiError", 
